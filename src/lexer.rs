@@ -1,3 +1,4 @@
+use log::debug;
 use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq)]
@@ -103,4 +104,20 @@ pub enum Token {
     Dot,
     #[token(":")]
     Colon,
+}
+
+pub fn tokenize(input: &str) -> Vec<Token> {
+    let mut lex = Token::lexer(input);
+    let mut tokens: Vec<Token> = Vec::new();
+
+    while let Some(result) = lex.next() {
+        match result {
+            Ok(tok) => {
+                debug!("{:<15} => {:>15?}", lex.slice(), tok);
+                tokens.push(tok)
+            }
+            Err(e) => panic!("Lexer error occured: {:?}", e),
+        }
+    }
+    tokens
 }

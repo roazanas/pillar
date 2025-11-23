@@ -1,14 +1,9 @@
 mod lexer;
-use crate::lexer::Token;
-use logos::Logos;
 
 fn main() {
-    let mut lex = Token::lexer("FR i IN 1..=2: abc = i");
-
-    while let Some(result) = lex.next() {
-        match result {
-            Ok(tok) => println!("{:?}: {}", tok, lex.slice()),
-            Err(e) => panic!("Lexer error occured: {:?}", e),
-        }
-    }
+    env_logger::init();
+    let test_code =
+        std::fs::read_to_string("/home/rznz/dev_proj/rust/pillar/example.rplr").unwrap();
+    let res_tokens = lexer::tokenize(&test_code);
+    println!("{res_tokens:?}");
 }
