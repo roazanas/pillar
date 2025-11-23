@@ -1,0 +1,11 @@
+[package]
+name = "pillar"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logos = "0.15.1"
+lalrpop-util = { version = "0.22.2", default-features = false }
+
+[build-dependencies]
+lalrpop = { version = "0.22.2", default-features = false }
