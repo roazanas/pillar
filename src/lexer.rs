@@ -3,7 +3,7 @@ use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq)]
 #[logos(skip r"[ \t\n\f\r]+")]
-pub enum Token {
+pub enum Token<'input> {
     #[token("LT")]
     KeywordLet,
     #[token("FN")]
@@ -35,15 +35,15 @@ pub enum Token {
     BooleanTrue,
     #[token("false")]
     BooleanFalse,
-    #[regex(r"\d+")]
-    IntLiteral,
-    #[regex(r"\d+\.\d+")]
-    FloatLiteral,
-    #[regex(r#""[^"]*""#)]
-    StringLiteral,
+    #[regex(r"\d+", |lex| lex.slice().parse().ok())]
+    IntLiteral(i32),
+    #[regex(r"\d+\.\d+", |lex| lex.slice().parse().ok())]
+    FloatLiteral(f64),
+    #[regex(r#""[^"]*""#, |lex| lex.slice())]
+    StringLiteral(&'input str),
 
-    #[regex(r"[a-zA-Z_]\w*")]
-    Identifier,
+    #[regex(r"[a-zA-Z_]\w*", |lex| lex.slice())]
+    Identifier(&'input str),
 
     #[token("=")]
     Assign,
@@ -104,16 +104,19 @@ pub enum Token {
     Dot,
     #[token(":")]
     Colon,
+
+    #[regex(".", |lex| lex.slice(), priority = 0)]
+    Invalid(&'input str),
 }
 
-pub fn tokenize(input: &str) -> Vec<Token> {
+pub fn tokenize(input: &str) -> Vec<Token<'_>> {
     let mut lex = Token::lexer(input);
     let mut tokens: Vec<Token> = Vec::new();
 
     while let Some(result) = lex.next() {
         match result {
             Ok(tok) => {
-                debug!("{:<15} => {:>15?}", lex.slice(), tok);
+                debug!("{:<15} => {:?}", lex.slice(), tok);
                 tokens.push(tok)
             }
             Err(e) => panic!("Lexer error occured: {:?}", e),

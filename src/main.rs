@@ -1,9 +1,19 @@
+use std::io::{self, BufRead};
+
 mod lexer;
 
 fn main() {
     env_logger::init();
-    let test_code =
-        std::fs::read_to_string("/home/rznz/dev_proj/rust/pillar/example.rplr").unwrap();
-    let res_tokens = lexer::tokenize(&test_code);
-    println!("{res_tokens:?}");
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        match line {
+            Ok(input) => {
+                if input.is_empty() {
+                    break;
+                }
+                lexer::tokenize(&input);
+            }
+            Err(_) => break,
+        }
+    }
 }
