@@ -3,7 +3,6 @@ use logos::Logos;
 #[derive(Logos, Debug, PartialEq)]
 #[logos(skip r"[ \t\n\f\r]+")]
 pub enum Token {
-    // Ключевые слова
     #[token("LT")]
     KeywordLet,
     #[token("FN")]
@@ -31,7 +30,6 @@ pub enum Token {
     #[token("LP")]
     KeywordLoop,
 
-    // Литералы
     #[token("true")]
     BooleanTrue,
     #[token("false")]
@@ -43,11 +41,9 @@ pub enum Token {
     #[regex(r#""[^"]*""#)]
     StringLiteral,
 
-    // Идентификаторы
     #[regex(r"[a-zA-Z_]\w*")]
     Identifier,
 
-    // Операторы
     #[token("=")]
     Assign,
     #[token("+")]
@@ -79,19 +75,16 @@ pub enum Token {
     #[token("!")]
     LogicalNot,
 
-    // Диапазоны
     #[token("..")]
     RangeExclusive,
     #[token("..=")]
     RangeInclusive,
 
-    // Стрелки
     #[token("->")]
     Arrow,
     #[token("=>")]
     FatArrow,
 
-    // Разделители
     #[token("(")]
     LeftParen,
     #[token(")")]
