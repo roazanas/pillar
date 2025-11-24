@@ -1,7 +1,7 @@
 use log::debug;
 use logos::Logos;
 
-#[derive(Logos, Debug, PartialEq)]
+#[derive(Logos, Debug, PartialEq, Clone)]
 #[logos(skip r"[ \t\n\f\r]+")]
 pub enum Token<'input> {
     #[token("LT")]
@@ -36,7 +36,7 @@ pub enum Token<'input> {
     #[token("false")]
     BooleanFalse,
     #[regex(r"\d+", |lex| lex.slice().parse().ok())]
-    IntLiteral(i32),
+    IntLiteral(i64),
     #[regex(r"\d+\.\d+", |lex| lex.slice().parse().ok())]
     FloatLiteral(f64),
     #[regex(r#""[^"]*""#, |lex| lex.slice())]
