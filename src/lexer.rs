@@ -113,6 +113,8 @@ pub enum Token<'input> {
     Dot,
     #[token(":")]
     Colon,
+    #[token(";")]
+    Semicolon,
 
     #[regex(".", |lex| lex.slice(), priority = 0)]
     Invalid(&'input str),

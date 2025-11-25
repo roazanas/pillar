@@ -16,6 +16,7 @@ pub enum Expression<'src> {
     Float(f64),
     Boolean(bool),
     String(&'src str),
+    Identifier(&'src str),
 
     Add { lho: Box<Self>, rho: Box<Self> },
     Sub { lho: Box<Self>, rho: Box<Self> },
@@ -40,7 +41,7 @@ pub enum Statement<'src> {
     Fn {
         name: &'src str,
         arguments: Vec<TypedVar<'src>>,
-        code: Block<'src>,
+        container: Block<'src>,
     },
     If {
         condition: Expression<'src>,
@@ -59,49 +60,50 @@ pub struct TypedVar<'src> {
     pub variables: (Type, &'src str),
 }
 
-pub fn parser<'src>() -> impl Parser<'src, &'src [Token<'src>], Expression<'src>> {
+pub fn parser_expr<'src>() -> impl Parser<'src, &'src [Token<'src>], Expression<'src>> {
     let literal = select! {
         Token::IntLiteral(n) => Expression::Int(n),
         Token::FloatLiteral(n) => Expression::Float(n),
         Token::BooleanTrue => Expression::Boolean(true),
         Token::BooleanFalse => Expression::Boolean(false),
         Token::StringLiteral(s) => Expression::String(s),
+        Token::Identifier(s) => Expression::Identifier(s),
     };
 
-    let op_add = select! { Token::Plus => () };
-    let op_sub = select! { Token::Minus => () };
-    let op_mul = select! { Token::Star => () };
-    let op_div = select! { Token::Slash => () };
-    let op_mod = select! { Token::Percent => () };
-    let op_eq = select! { Token::Equal => () };
-    let op_neq = select! { Token::NotEqual => () };
-    let op_lt = select! { Token::Less => () };
-    let op_lte = select! { Token::LessEqual => () };
-    let op_gt = select! { Token::Greater => () };
-    let op_gte = select! { Token::GreaterEqual => () };
+    let op_add = just(Token::Plus);
+    let op_sub = just(Token::Minus);
+    let op_mul = just(Token::Star);
+    let op_div = just(Token::Slash);
+    let op_mod = just(Token::Percent);
+    let op_eq = just(Token::Equal);
+    let op_nq = just(Token::NotEqual);
+    let op_ls = just(Token::Less);
+    let op_le = just(Token::LessEqual);
+    let op_gr = just(Token::Greater);
+    let op_ge = just(Token::GreaterEqual);
 
-    literal.pratt((
+    let operations_parser = literal.pratt((
         infix(left(1), op_eq, |l, _, r, _| Expression::Equal {
             lho: Box::new(l),
             rho: Box::new(r),
         }),
-        infix(left(1), op_neq, |l, _, r, _| Expression::NotEqual {
+        infix(left(1), op_nq, |l, _, r, _| Expression::NotEqual {
             lho: Box::new(l),
             rho: Box::new(r),
         }),
-        infix(left(1), op_lt, |l, _, r, _| Expression::Less {
+        infix(left(1), op_ls, |l, _, r, _| Expression::Less {
             lho: Box::new(l),
             rho: Box::new(r),
         }),
-        infix(left(1), op_lte, |l, _, r, _| Expression::LessEqual {
+        infix(left(1), op_le, |l, _, r, _| Expression::LessEqual {
             lho: Box::new(l),
             rho: Box::new(r),
         }),
-        infix(left(1), op_gt, |l, _, r, _| Expression::Greater {
+        infix(left(1), op_gr, |l, _, r, _| Expression::Greater {
             lho: Box::new(l),
             rho: Box::new(r),
         }),
-        infix(left(1), op_gte, |l, _, r, _| Expression::GreaterEqual {
+        infix(left(1), op_ge, |l, _, r, _| Expression::GreaterEqual {
             lho: Box::new(l),
             rho: Box::new(r),
         }),
@@ -125,5 +127,61 @@ pub fn parser<'src>() -> impl Parser<'src, &'src [Token<'src>], Expression<'src>
             lho: Box::new(l),
             rho: Box::new(r),
         }),
-    ))
+    ));
+
+    operations_parser
+}
+
+pub fn parser_stmt<'src>() -> impl Parser<'src, &'src [Token<'src>], Statement<'src>> {
+    recursive(|stmt_parser| {
+        let type_parser = select! {
+            Token::TypeInt => Type::Int,
+            Token::TypeFloat => Type::Float,
+            Token::TypeBool => Type::Boolean,
+            Token::TypeString => Type::String,
+        };
+
+        let ident_parser = select! {
+            Token::Identifier(s) => s,
+        };
+
+        let typed_var = ident_parser
+            .then_ignore(just(Token::Colon))
+            .then(type_parser)
+            .map(|(name, typ)| TypedVar {
+                variables: (typ, name),
+            });
+
+        let block = just(Token::LeftBrace)
+            .ignore_then(stmt_parser.clone().repeated().collect::<Vec<_>>())
+            .then_ignore(just(Token::RightBrace))
+            .map(|statements| Block { statements });
+
+        let stmt_let = just(Token::KeywordLet)
+            .ignore_then(ident_parser)
+            .then_ignore(just(Token::Colon))
+            .then(type_parser)
+            .then_ignore(just(Token::Assign))
+            .then(parser_expr().boxed())
+            .then_ignore(just(Token::Semicolon))
+            .map(|((name, _typ), expr)| Statement::Let { name, value: expr });
+
+        let stmt_fn = just(Token::KeywordFn)
+            .ignore_then(ident_parser)
+            .then_ignore(just(Token::LeftParen))
+            .then(
+                typed_var
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(Token::RightParen))
+            .then(block)
+            .map(|((name, arguments), code)| Statement::Fn {
+                name,
+                arguments,
+                container: code,
+            });
+
+        choice((stmt_let, stmt_fn))
+    })
 }
