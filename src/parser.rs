@@ -3,6 +3,14 @@ use chumsky::pratt::*;
 use chumsky::prelude::*;
 
 #[derive(Debug, Clone)]
+pub enum Type {
+    Int,
+    Float,
+    Boolean,
+    String,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expression<'src> {
     Int(i64),
     Float(f64),
@@ -27,13 +35,28 @@ pub enum Expression<'src> {
 pub enum Statement<'src> {
     Let {
         name: &'src str,
-        value: Box<Self>,
+        value: Expression<'src>,
+    },
+    Fn {
+        name: &'src str,
+        arguments: Vec<TypedVar<'src>>,
+        code: Block<'src>,
     },
     If {
-        condition: Box<Self>,
-        then_branch: Box<Self>,
-        else_branch: Option<Box<Self>>,
+        condition: Expression<'src>,
+        then_branch: Block<'src>,
+        else_branch: Option<Block<'src>>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct Block<'src> {
+    pub statements: Vec<Statement<'src>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedVar<'src> {
+    pub variables: (Type, &'src str),
 }
 
 pub fn parser<'src>() -> impl Parser<'src, &'src [Token<'src>], Expression<'src>> {

@@ -42,6 +42,15 @@ pub enum Token<'input> {
     #[regex(r#""[^"]*""#, |lex| lex.slice())]
     StringLiteral(&'input str),
 
+    #[token("int")]
+    TypeInt,
+    #[token("float")]
+    TypeFloat,
+    #[token("bool")]
+    TypeBool,
+    #[token("str")]
+    TypeString,
+
     #[regex(r"[a-zA-Z_]\w*", |lex| lex.slice())]
     Identifier(&'input str),
 
