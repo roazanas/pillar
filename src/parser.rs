@@ -41,7 +41,7 @@ pub enum Statement<'src> {
     Fn {
         name: &'src str,
         arguments: Vec<TypedVar<'src>>,
-        container: Block<'src>,
+        code: Block<'src>,
     },
     Ret {
         value: Expression<'src>,
@@ -182,7 +182,7 @@ pub fn parser_stmt<'src>() -> impl Parser<'src, &'src [Token<'src>], Statement<'
             .map(|((name, arguments), code)| Statement::Fn {
                 name,
                 arguments,
-                container: code,
+                code,
             });
 
         let stmt_ret = just(Token::KeywordReturn)

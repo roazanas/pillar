@@ -8,5 +8,10 @@ logos = "0.15.1"
 log = "0.4.28"
 env_logger = "0.11.8"
 chumsky = { version = "0.11.2", features = ["pratt"] }
+cranelift = "0.126.1"
+target-lexicon = "0.13.3"
+cranelift-native = "0.126.1"
+cranelift-module = "0.126.1"
+cranelift-object = "0.126.1"
 
 [build-dependencies]
