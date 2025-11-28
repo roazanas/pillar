@@ -43,6 +43,9 @@ pub enum Statement<'src> {
         arguments: Vec<TypedVar<'src>>,
         container: Block<'src>,
     },
+    Ret {
+        value: Expression<'src>,
+    },
     If {
         condition: Expression<'src>,
         then_branch: Block<'src>,
@@ -182,6 +185,11 @@ pub fn parser_stmt<'src>() -> impl Parser<'src, &'src [Token<'src>], Statement<'
                 container: code,
             });
 
-        choice((stmt_let, stmt_fn))
+        let stmt_ret = just(Token::KeywordReturn)
+            .ignore_then(parser_expr().boxed())
+            .then_ignore(just(Token::Semicolon))
+            .map(|value| Statement::Ret { value });
+
+        choice((stmt_let, stmt_fn, stmt_ret))
     })
 }
