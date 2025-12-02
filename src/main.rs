@@ -16,14 +16,18 @@ fn main() {
     env_logger::init();
     // let test_code =
     //     std::fs::read_to_string("/home/rznz/dev_proj/rust/pillar/example.rplr").unwrap();
-    let tokens = lexer::tokenize("FN main() {RET 1+2 + 4 +2;}");
+    let test_code = std::fs::read_to_string("/home/rznz/dev_proj/rust/pillar/test.rplr").unwrap();
+    let tokens = lexer::tokenize(&test_code);
+    // let tokens = lexer::tokenize("FN main() {RET 2+5+6;}");
     let parser = parser::parser_stmt();
     let ast = parser.parse(&tokens).unwrap();
     debug!("{ast:#?}");
 
     let settings = compiler_settings::CompilerSettings::new().unwrap();
-    let mut backend = aot_backend::AOTBackend::new(&settings, "out.o").unwrap();
+    let mut backend = aot_backend::AOTBackend::new(&settings, "output").unwrap();
     let mut compiler = compiler::IRCompiler::new();
+
+    println!("Building for: \n{:#?}", settings.target_triple());
 
     match ast {
         Statement::Fn {
@@ -51,14 +55,5 @@ fn main() {
 
     backend.finalize().unwrap();
 
-    Command::new("cc")
-        .arg("out.o")
-        .arg("-o")
-        .arg("output")
-        .status()
-        .expect("Failed to link");
-
     println!("Build successful!");
-
-    Command::new("rm").arg("out.o");
 }

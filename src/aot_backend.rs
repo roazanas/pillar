@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, path::PathBuf, process::Command};
 
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
@@ -33,8 +33,11 @@ impl AOTBackend {
     pub fn finalize(self) -> Result<(), String> {
         let product = self.module.finish();
 
+        let mut obj_path = PathBuf::from(&self.output_path);
+        obj_path.add_extension(".o");
+
         let mut file =
-            File::create(&self.output_path).map_err(|e| format!("Unable to create file: {e}"))?;
+            File::create(&obj_path).map_err(|e| format!("Unable to create file: {e}"))?;
 
         file.write_all(
             &product
@@ -42,6 +45,28 @@ impl AOTBackend {
                 .map_err(|e| format!("Unable to generate object code: {e}"))?,
         )
         .map_err(|e| format!("Unable to write file: {e}"))?;
+
+        drop(file);
+
+        let status = if cfg!(target_os = "windows") {
+            Command::new("cl.exe")
+                .arg(&obj_path)
+                .arg(format!("/Fe:{}", self.output_path))
+                .status()
+        } else {
+            Command::new("cc")
+                .arg(&obj_path)
+                .arg("-o")
+                .arg(&self.output_path)
+                .status()
+        }
+        .map_err(|e| format!("Failed to invoke linker: {e}"))?;
+
+        if !status.success() {
+            return Err(format!("Linking failed with status: {status}"));
+        }
+
+        std::fs::remove_file(&obj_path).ok();
 
         Ok(())
     }
