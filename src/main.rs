@@ -1,5 +1,4 @@
-use std::process::Command;
-
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::Parser;
 use cranelift::prelude::types;
 use log::debug;
@@ -16,12 +15,48 @@ fn main() {
     env_logger::init();
     // let test_code =
     //     std::fs::read_to_string("/home/rznz/dev_proj/rust/pillar/example.rplr").unwrap();
-    let test_code = std::fs::read_to_string("/home/rznz/dev_proj/rust/pillar/test.rplr").unwrap();
-    let tokens = lexer::tokenize(&test_code);
-    // let tokens = lexer::tokenize("FN main() {RET 2+5+6;}");
+    let file_path = "/home/rznz/dev_proj/rust/pillar/test.rplr";
+    let test_code = std::fs::read_to_string(file_path).unwrap();
+    let tokens = match lexer::tokenize(&test_code) {
+        Ok(tokens) => tokens,
+        Err(err) => {
+            Report::build(ReportKind::Error, (file_path, err.span.clone()))
+                .with_message("Lexer error")
+                .with_label(
+                    Label::new((file_path, err.span.clone()))
+                        .with_message(format!("Unexpected character: {}", err.invalid_text))
+                        .with_color(Color::Red),
+                )
+                .finish()
+                .eprint((file_path, Source::from(&test_code)))
+                .unwrap();
+
+            std::process::exit(1);
+        }
+    };
+
     let parser = parser::parser_stmt();
-    let ast = parser.parse(&tokens).unwrap();
-    debug!("{ast:#?}");
+    let ast_unprocesed = parser.parse(&tokens);
+
+    let ast = match parser.parse(&tokens).into_result() {
+        Ok(ast) => ast,
+        Err(errors) => {
+            for err in errors {
+                Report::build(ReportKind::Error, (file_path, err.span.clone()))
+                    .with_message("Parser error")
+                    .with_label(
+                        Label::new((file_path, err.span.clone()))
+                            .with_message(format!("Error: {:?}", err))
+                            .with_color(Color::Red),
+                    )
+                    .finish()
+                    .eprint((file_path, Source::from(&test_code)))
+                    .unwrap();
+            }
+            std::process::exit(1);
+        }
+    };
+    debug!("\n{ast:#?}");
 
     let settings = compiler_settings::CompilerSettings::new().unwrap();
     let mut backend = aot_backend::AOTBackend::new(&settings, "output").unwrap();

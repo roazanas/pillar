@@ -51,7 +51,7 @@ pub enum Token<'input> {
     #[token("str")]
     TypeString,
 
-    #[regex(r"[a-zA-Z_]\w*", |lex| lex.slice())]
+    #[regex(r"[a-zA-Z_][a-zA-Z_\d]*", |lex| lex.slice())]
     Identifier(&'input str),
 
     #[token("=")]
@@ -115,12 +115,9 @@ pub enum Token<'input> {
     Colon,
     #[token(";")]
     Semicolon,
-
-    #[regex(".", |lex| lex.slice(), priority = 0)]
-    Invalid(&'input str),
 }
 
-pub fn tokenize(input: &str) -> Vec<Token<'_>> {
+pub fn tokenize(input: &str) -> Result<Vec<Token<'_>>, LexError> {
     let mut lex = Token::lexer(input);
     let mut tokens: Vec<Token> = Vec::new();
 
@@ -130,8 +127,20 @@ pub fn tokenize(input: &str) -> Vec<Token<'_>> {
                 debug!("{:<15} => {:?}", lex.slice(), tok);
                 tokens.push(tok)
             }
-            Err(e) => panic!("Lexer error occured: {:?}", e),
+            Err(_) => {
+                return Err(LexError {
+                    span: lex.span(),
+                    invalid_text: lex.slice().to_string(),
+                });
+            }
         }
     }
-    tokens
+
+    Ok(tokens)
+}
+
+#[derive(Debug)]
+pub struct LexError {
+    pub span: std::ops::Range<usize>,
+    pub invalid_text: String,
 }
