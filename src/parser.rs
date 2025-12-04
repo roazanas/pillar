@@ -86,7 +86,7 @@ pub fn parser_expr<'src>()
     let op_gr = just(Token::Greater);
     let op_ge = just(Token::GreaterEqual);
 
-    let operations_parser = literal.pratt((
+    literal.pratt((
         infix(left(1), op_eq, |l, _, r, _| Expression::Equal {
             lho: Box::new(l),
             rho: Box::new(r),
@@ -131,9 +131,7 @@ pub fn parser_expr<'src>()
             lho: Box::new(l),
             rho: Box::new(r),
         }),
-    ));
-
-    operations_parser
+    ))
 }
 
 pub fn parser_stmt<'src>()
