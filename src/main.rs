@@ -38,24 +38,24 @@ fn main() {
     let parser = parser::parser_stmt();
     let ast_unprocesed = parser.parse(&tokens);
 
-    let ast = match parser.parse(&tokens).into_result() {
-        Ok(ast) => ast,
-        Err(errors) => {
-            for err in errors {
-                Report::build(ReportKind::Error, (file_path, err.span.clone()))
-                    .with_message("Parser error")
-                    .with_label(
-                        Label::new((file_path, err.span.clone()))
-                            .with_message(format!("Error: {:?}", err))
-                            .with_color(Color::Red),
-                    )
-                    .finish()
-                    .eprint((file_path, Source::from(&test_code)))
-                    .unwrap();
-            }
-            std::process::exit(1);
-        }
-    };
+    if let Some(err) = ast_unprocesed.errors().next() {
+        let span = err.span();
+        eprintln!(
+            "Syntax error:\n  found '{:?}' at {:?} ('{:?}' -> '{:?}')\n  expected: {}",
+            err.found().unwrap(),
+            span,
+            tokens[span.start - 1],
+            tokens[span.end - 1],
+            err.expected()
+                .map(|e| format!("{e:?}"))
+                .collect::<Vec<_>>()
+                .join(" or "),
+        );
+        std::process::exit(1);
+    }
+
+    let ast = ast_unprocesed.unwrap();
+
     debug!("\n{ast:#?}");
 
     let settings = compiler_settings::CompilerSettings::new().unwrap();

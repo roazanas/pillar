@@ -63,7 +63,8 @@ pub struct TypedVar<'src> {
     pub variables: (Type, &'src str),
 }
 
-pub fn parser_expr<'src>() -> impl Parser<'src, &'src [Token<'src>], Expression<'src>> {
+pub fn parser_expr<'src>()
+-> impl Parser<'src, &'src [Token<'src>], Expression<'src>, extra::Err<Rich<'src, Token<'src>>>> {
     let literal = select! {
         Token::IntLiteral(n) => Expression::Int(n),
         Token::FloatLiteral(n) => Expression::Float(n),
@@ -135,7 +136,8 @@ pub fn parser_expr<'src>() -> impl Parser<'src, &'src [Token<'src>], Expression<
     operations_parser
 }
 
-pub fn parser_stmt<'src>() -> impl Parser<'src, &'src [Token<'src>], Statement<'src>> {
+pub fn parser_stmt<'src>()
+-> impl Parser<'src, &'src [Token<'src>], Statement<'src>, extra::Err<Rich<'src, Token<'src>>>> {
     recursive(|stmt_parser| {
         let type_parser = select! {
             Token::TypeInt => Type::Int,
