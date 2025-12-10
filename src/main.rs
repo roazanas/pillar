@@ -1,23 +1,45 @@
 mod aot_backend;
+mod cli;
 mod compiler;
 mod compiler_settings;
 mod diagnostics;
 mod lexer;
 mod parser;
 
+use crate::cli::Args;
 use chumsky::Parser;
+use clap::Parser as CliParser;
 use log::debug;
 
 fn main() {
-    env_logger::init();
-    // let test_code =
-    //     std::fs::read_to_string("/home/rznz/dev_proj/rust/pillar/example.rplr").unwrap();
-    let file_path = "/home/rznz/dev_proj/rust/pillar/test.rplr";
-    let test_code = std::fs::read_to_string(file_path).unwrap();
-    let tokens = match lexer::tokenize(&test_code) {
+    let cli_args = Args::parse();
+
+    if cli_args.verbose {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+    } else {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Off)
+            .init();
+    }
+
+    let file_path = cli_args
+        .file
+        .to_str()
+        .expect("{file_path:?} is not valid path!");
+
+    let output_path = cli_args
+        .output
+        .to_str()
+        .expect("{file_path:?} is not valid path!");
+
+    let code_text =
+        std::fs::read_to_string(file_path).expect("Failed to read source file {file_path:?}");
+    let tokens = match lexer::tokenize(&code_text) {
         Ok(tokens) => tokens,
         Err(err) => {
-            diagnostics::emit_lexer_error(&err, file_path, &test_code);
+            diagnostics::emit_lexer_error(&err, file_path, &code_text);
             std::process::exit(1);
         }
     };
@@ -35,7 +57,7 @@ fn main() {
     debug!("\n{ast:#?}");
 
     let settings = compiler_settings::CompilerSettings::new().unwrap();
-    let mut backend = aot_backend::AOTBackend::new(&settings, "output").unwrap();
+    let mut backend = aot_backend::AOTBackend::new(&settings, output_path).unwrap();
     let mut compiler = compiler::IRCompiler::new();
 
     println!("Building for: \n{:#?}", settings.target_triple());

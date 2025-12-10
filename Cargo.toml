@@ -15,5 +15,8 @@ cranelift-module = "0.126.1"
 cranelift-object = "0.126.1"
 cc = "1.2.48"
 ariadne = "0.6.0"
+clap = { version = "4.5.53", features = ["derive"] }
 
-[build-dependencies]
+[[bin]]
+name = "plrc"
+path = "src/main.rs"
