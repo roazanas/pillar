@@ -1,15 +1,12 @@
-use ariadne::{Color, Label, Report, ReportKind, Source};
-use chumsky::Parser;
-use cranelift::prelude::types;
-use log::debug;
-
-use crate::parser::Statement;
-
 mod aot_backend;
 mod compiler;
 mod compiler_settings;
+mod diagnostics;
 mod lexer;
 mod parser;
+
+use chumsky::Parser;
+use log::debug;
 
 fn main() {
     env_logger::init();
@@ -20,17 +17,7 @@ fn main() {
     let tokens = match lexer::tokenize(&test_code) {
         Ok(tokens) => tokens,
         Err(err) => {
-            Report::build(ReportKind::Error, (file_path, err.span.clone()))
-                .with_message("Lexer error")
-                .with_label(
-                    Label::new((file_path, err.span.clone()))
-                        .with_message(format!("Unexpected character: {}", err.invalid_text))
-                        .with_color(Color::Red),
-                )
-                .finish()
-                .eprint((file_path, Source::from(&test_code)))
-                .unwrap();
-
+            diagnostics::emit_lexer_error(&err, file_path, &test_code);
             std::process::exit(1);
         }
     };
@@ -39,18 +26,7 @@ fn main() {
     let ast_unprocesed = parser.parse(&tokens);
 
     if let Some(err) = ast_unprocesed.errors().next() {
-        let span = err.span();
-        eprintln!(
-            "Syntax error:\n  found '{:?}' at {:?} ('{:?}' -> '{:?}')\n  expected: {}",
-            err.found().unwrap(),
-            span,
-            tokens[span.start - 1],
-            tokens[span.end - 1],
-            err.expected()
-                .map(|e| format!("{e:?}"))
-                .collect::<Vec<_>>()
-                .join(" or "),
-        );
+        diagnostics::emit_parser_error(err, &tokens);
         std::process::exit(1);
     }
 
@@ -64,29 +40,9 @@ fn main() {
 
     println!("Building for: \n{:#?}", settings.target_triple());
 
-    match ast {
-        Statement::Fn {
-            name,
-            arguments,
-            code,
-        } => {
-            let entry_params: Vec<cranelift::prelude::Type> = arguments
-                .iter()
-                .map(|arg| compiler::translate(&arg.variables.0))
-                .collect();
-
-            compiler
-                .compile_function(
-                    backend.module_mut(),
-                    name,
-                    &entry_params,
-                    Some(types::I64),
-                    code,
-                )
-                .expect("Compilation error")
-        }
-        _ => panic!("Unable to find the main function"),
-    };
+    compiler
+        .compile_program(backend.module_mut(), ast)
+        .expect("Compilation error");
 
     backend.finalize().unwrap();
 

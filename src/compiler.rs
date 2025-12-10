@@ -18,6 +18,28 @@ impl IRCompiler {
         }
     }
 
+    pub fn compile_program<M: Module>(
+        &mut self,
+        module: &mut M,
+        ast: Statement,
+    ) -> Result<FuncId, String> {
+        match ast {
+            Statement::Fn {
+                name,
+                arguments,
+                code,
+            } => {
+                let entry_params: Vec<Type> = arguments
+                    .iter()
+                    .map(|arg| translate(&arg.variables.0))
+                    .collect();
+
+                self.compile_function(module, name, &entry_params, Some(types::I64), code)
+            }
+            _ => Err("Expected a function definition as the program entry point".to_string()),
+        }
+    }
+
     pub fn compile_function<M: Module>(
         &mut self,
         module: &mut M,
