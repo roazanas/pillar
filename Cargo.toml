@@ -2,6 +2,8 @@
 name = "pillar"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/roazanas/pillar"
+readme = "README.md"
 
 [dependencies]
 logos = "0.15.1"
@@ -26,3 +28,16 @@ clap_complete = "4.5.61"
 [[bin]]
 name = "plrc"
 path = "src/main.rs"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+[package.metadata.dist]
+include = [
+  "target/completions/plrc.bash",
+  "target/completions/_plrc",
+  "target/completions/plrc.fish",
+  "target/completions/_plrc.ps1",
+]
