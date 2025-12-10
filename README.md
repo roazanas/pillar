@@ -1,5 +1,3 @@
-# Pillar language
-
 ![Pillar logo](media/logo.png "Pillar :)")
 
 > if you're burned out in programming,
