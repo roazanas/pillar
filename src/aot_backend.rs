@@ -34,7 +34,7 @@ impl AOTBackend {
         let product = self.module.finish();
 
         let mut obj_path = PathBuf::from(&self.output_path);
-        obj_path.add_extension(".o");
+        obj_path.set_extension(".o");
 
         let mut file =
             File::create(&obj_path).map_err(|e| format!("Unable to create file: {e}"))?;

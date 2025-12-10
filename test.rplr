@@ -1,4 +1,3 @@
 FN main() {
-  LT x: int = 2;
-  RET x*x;
+  RET 5 + 2*5;
 }
