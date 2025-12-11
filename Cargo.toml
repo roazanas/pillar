@@ -4,6 +4,8 @@ version = "0.1.2"
 edition = "2024"
 repository = "https://github.com/roazanas/pillar"
 readme = "README.md"
+description = "Compiler for the Pillar language (https://github.com/roazanas/pillar)"
+authors = ["Nikita Zhulanov <me@rznz.ru>"]
 
 [dependencies]
 logos = "0.15.1"
@@ -41,3 +43,9 @@ include = [
   "target/completions/plrc.fish",
   "target/completions/_plrc.ps1",
 ]
+
+[package.metadata.wix]
+upgrade-guid = "A2E9C4FB-BC46-4326-A907-2A51D965E636"
+path-guid = "A15D2BA1-CAA3-42E8-BB1A-44CFFFDC8203"
+license = false
+eula = false
