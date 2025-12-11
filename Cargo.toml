@@ -20,10 +20,12 @@ cranelift-object = "0.126.1"
 ariadne = "0.6.0"
 clap = { version = "4.5.53", features = ["color", "derive"] }
 clap_complete = "4.5.61"
+owo-colors = "4.2.3"
 
 [build-dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
 clap_complete = "4.5.61"
+owo-colors = "4.2.3"
 
 
 [[bin]]
