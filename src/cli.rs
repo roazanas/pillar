@@ -10,4 +10,6 @@ pub struct Args {
     pub output: PathBuf,
     #[arg(short, long)]
     pub verbose: bool,
+    #[arg(short, long)]
+    pub transpose: bool,
 }

@@ -5,6 +5,7 @@ mod compiler_settings;
 mod diagnostics;
 mod lexer;
 mod parser;
+mod transposer;
 
 use crate::cli::Args;
 use chumsky::Parser;
@@ -36,6 +37,21 @@ fn main() {
 
     let code_text =
         std::fs::read_to_string(file_path).expect("Failed to read source file {file_path:?}");
+
+    let rows: Vec<&str> = code_text.lines().collect();
+
+    if cli_args.transpose {
+        let transposed = transposer::transpose(rows, true);
+
+        for line in transposed {
+            println!("{}", line);
+        }
+        std::process::exit(0);
+    }
+
+    let transposed = transposer::transpose(rows, false);
+    let code_text = transposed.join("\n");
+
     let tokens = match lexer::tokenize(&code_text) {
         Ok(tokens) => tokens,
         Err(err) => {
