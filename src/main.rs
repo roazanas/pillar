@@ -66,20 +66,7 @@ fn main() {
         .compile_program(backend.module_mut(), ast)
         .expect("Compilation error");
 
-    if let Err(e) = backend.finalize() {
-        if e == "linker_not_found" {
-            eprintln!("\nLinker not found!\n");
-            eprintln!("Please install MinGW-w64:");
-            eprintln!("  1. Download from https://winlibs.com/");
-            eprintln!("     (Look for \"Help! I don't know which download to choose!\")");
-            eprintln!("  2. Extract and add bin/ folder to PATH");
-            eprintln!("  3. Verify: gcc --version");
-            eprintln!("  4. Rerun plrc\n");
-        } else {
-            eprintln!("Build failed: {}", e);
-        }
-        std::process::exit(1);
-    }
+    backend.finalize().expect("Failed to finalize program");
 
     println!("Build successful!");
 }

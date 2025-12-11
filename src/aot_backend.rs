@@ -48,6 +48,8 @@ impl AOTBackend {
 
         drop(file);
 
+        check_gcc().unwrap();
+
         let status = if cfg!(target_os = "windows") {
             Command::new("gcc")
                 .arg(&obj_path)
@@ -61,13 +63,7 @@ impl AOTBackend {
                 .arg(&self.output_path)
                 .status()
         }
-        .map_err(|_| {
-            if cfg!(target_os = "windows") {
-                "linker_not_found".to_string()
-            } else {
-                "Failed to invoke linker".to_string()
-            }
-        })?;
+        .map_err(|_| "Failed to invoke linker".to_string())?;
         if !status.success() {
             return Err(format!("Linking failed with status: {status}"));
         }
@@ -76,4 +72,25 @@ impl AOTBackend {
 
         Ok(())
     }
+}
+
+fn check_gcc() -> Result<(), String> {
+    if Command::new("gcc").arg("--version").output().is_err() {
+        eprintln!("GCC not found!\n");
+        #[cfg(target_os = "windows")]
+        eprintln!(
+            "Install GCC using one of these methods:\n\n\
+             Option 1 (Recommended - Scoop):\n\
+             > Set-ExecutionPolicy RemoteSigned -Scope CurrentUser\n\
+             > irm get.scoop.sh | iex\n\
+             > scoop install mingw\n\n\
+             Option 2 (Chocolatey):\n\
+             > choco install mingw\n\n\
+             Option 3 (winget):\n\
+             > winget install MSYS2.MSYS2\n\
+             Then run in MSYS2: pacman -S mingw-w64-ucrt-x86_64-gcc"
+        );
+        return Err("Missing dependency".into());
+    }
+    Ok(())
 }
