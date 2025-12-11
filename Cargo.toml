@@ -17,9 +17,8 @@ target-lexicon = "0.13.3"
 cranelift-native = "0.126.1"
 cranelift-module = "0.126.1"
 cranelift-object = "0.126.1"
-cc = "1.2.48"
 ariadne = "0.6.0"
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.5.53", features = ["color", "derive"] }
 clap_complete = "4.5.61"
 
 [build-dependencies]

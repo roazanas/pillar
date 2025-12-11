@@ -591,7 +591,6 @@ name = "pillar"
 version = "0.2.0"
 dependencies = [
  "ariadne",
- "cc",
  "chumsky",
  "clap",
  "clap_complete",
