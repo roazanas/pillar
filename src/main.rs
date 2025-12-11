@@ -11,6 +11,7 @@ use crate::cli::Args;
 use chumsky::Parser;
 use clap::Parser as CliParser;
 use log::debug;
+use owo_colors::OwoColorize;
 
 fn main() {
     let cli_args = Args::parse();
@@ -76,7 +77,15 @@ fn main() {
     let mut backend = aot_backend::AOTBackend::new(&settings, output_path).unwrap();
     let mut compiler = compiler::IRCompiler::new();
 
-    println!("Building for: \n{:#?}", settings.target_triple());
+    let triple = settings.target_triple();
+    println!(
+        "{}\n    {} ({}) - {} / {}\n",
+        "Building for:".black().on_white(),
+        triple.operating_system,
+        triple.architecture,
+        triple.environment,
+        triple.binary_format
+    );
 
     compiler
         .compile_program(backend.module_mut(), ast)
@@ -84,5 +93,5 @@ fn main() {
 
     backend.finalize().expect("Failed to finalize program");
 
-    println!("Build successful!");
+    println!("{}", "Build successful!".green());
 }

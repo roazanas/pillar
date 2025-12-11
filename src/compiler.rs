@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use cranelift::{codegen::Context, prelude::*};
 use cranelift_module::{FuncId, Linkage, Module};
+use owo_colors::OwoColorize;
 
 use crate::parser::{Block, Expression, Statement};
 
@@ -36,7 +37,11 @@ impl IRCompiler {
 
                 self.compile_function(module, name, &entry_params, Some(types::I64), code)
             }
-            _ => Err("Expected a function definition as the program entry point".to_string()),
+            _ => Err(format!(
+                "{} {}",
+                "Compilation error:".red().bold(),
+                "Expected a function definition as the program entry point".white()
+            )),
         }
     }
 
@@ -60,7 +65,7 @@ impl IRCompiler {
 
         let func_id = module
             .declare_function(name, Linkage::Export, &sig)
-            .map_err(|e| format!("Unable to declare function: {e}"))?;
+            .map_err(|e| format!("{} {}", "Unable to declare function:".red().bold(), e))?;
 
         let mut ctx = module.make_context();
         ctx.func.signature = sig;
@@ -82,7 +87,7 @@ impl IRCompiler {
 
         module
             .define_function(func_id, &mut ctx)
-            .map_err(|e| format!("Unable to define function: {e}"))?;
+            .map_err(|e| format!("{} {}", "Unable to define function:".red().bold(), e))?;
 
         module.clear_context(&mut ctx);
 
