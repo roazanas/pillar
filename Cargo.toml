@@ -49,6 +49,3 @@ upgrade-guid = "A2E9C4FB-BC46-4326-A907-2A51D965E636"
 path-guid = "A15D2BA1-CAA3-42E8-BB1A-44CFFFDC8203"
 license = false
 eula = false
-
-[workspace.metadata.dist.dependencies.chocolatey]
-mingw = "*"
