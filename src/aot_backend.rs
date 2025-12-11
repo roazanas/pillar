@@ -34,7 +34,7 @@ impl AOTBackend {
         let product = self.module.finish();
 
         let mut obj_path = PathBuf::from(&self.output_path);
-        obj_path.set_extension(".o");
+        obj_path.set_extension("o");
 
         let mut file =
             File::create(&obj_path).map_err(|e| format!("Unable to create file: {e}"))?;
@@ -49,9 +49,10 @@ impl AOTBackend {
         drop(file);
 
         let status = if cfg!(target_os = "windows") {
-            Command::new("cl.exe")
+            Command::new("gcc")
                 .arg(&obj_path)
-                .arg(format!("/Fe:{}", self.output_path))
+                .arg("-o")
+                .arg(&self.output_path)
                 .status()
         } else {
             Command::new("cc")
@@ -60,8 +61,13 @@ impl AOTBackend {
                 .arg(&self.output_path)
                 .status()
         }
-        .map_err(|e| format!("Failed to invoke linker: {e}"))?;
-
+        .map_err(|_| {
+            if cfg!(target_os = "windows") {
+                "linker_not_found".to_string()
+            } else {
+                "Failed to invoke linker".to_string()
+            }
+        })?;
         if !status.success() {
             return Err(format!("Linking failed with status: {status}"));
         }
