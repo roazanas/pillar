@@ -65,73 +65,81 @@ pub struct TypedVar<'src> {
 
 pub fn parser_expr<'src>()
 -> impl Parser<'src, &'src [Token<'src>], Expression<'src>, extra::Err<Rich<'src, Token<'src>>>> {
-    let literal = select! {
-        Token::IntLiteral(n) => Expression::Int(n),
-        Token::FloatLiteral(n) => Expression::Float(n),
-        Token::BooleanTrue => Expression::Boolean(true),
-        Token::BooleanFalse => Expression::Boolean(false),
-        Token::StringLiteral(s) => Expression::String(s),
-        Token::Identifier(s) => Expression::Identifier(s),
-    };
+    recursive(|expr| {
+        let literal = select! {
+            Token::IntLiteral(n) => Expression::Int(n),
+            Token::FloatLiteral(n) => Expression::Float(n),
+            Token::BooleanTrue => Expression::Boolean(true),
+            Token::BooleanFalse => Expression::Boolean(false),
+            Token::StringLiteral(s) => Expression::String(s),
+            Token::Identifier(s) => Expression::Identifier(s),
+        };
 
-    let op_add = just(Token::Plus);
-    let op_sub = just(Token::Minus);
-    let op_mul = just(Token::Star);
-    let op_div = just(Token::Slash);
-    let op_mod = just(Token::Percent);
-    let op_eq = just(Token::Equal);
-    let op_nq = just(Token::NotEqual);
-    let op_ls = just(Token::Less);
-    let op_le = just(Token::LessEqual);
-    let op_gr = just(Token::Greater);
-    let op_ge = just(Token::GreaterEqual);
+        let parens = just(Token::LeftParen)
+            .ignore_then(expr.clone())
+            .then_ignore(just(Token::RightParen));
 
-    literal.pratt((
-        infix(left(1), op_eq, |l, _, r, _| Expression::Equal {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(1), op_nq, |l, _, r, _| Expression::NotEqual {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(1), op_ls, |l, _, r, _| Expression::Less {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(1), op_le, |l, _, r, _| Expression::LessEqual {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(1), op_gr, |l, _, r, _| Expression::Greater {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(1), op_ge, |l, _, r, _| Expression::GreaterEqual {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(2), op_add, |l, _, r, _| Expression::Add {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(2), op_sub, |l, _, r, _| Expression::Sub {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(3), op_mul, |l, _, r, _| Expression::Mul {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(3), op_div, |l, _, r, _| Expression::Div {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-        infix(left(3), op_mod, |l, _, r, _| Expression::Mod {
-            lho: Box::new(l),
-            rho: Box::new(r),
-        }),
-    ))
+        let atom = literal.or(parens);
+
+        let op_add = just(Token::Plus);
+        let op_sub = just(Token::Minus);
+        let op_mul = just(Token::Star);
+        let op_div = just(Token::Slash);
+        let op_mod = just(Token::Percent);
+        let op_eq = just(Token::Equal);
+        let op_nq = just(Token::NotEqual);
+        let op_ls = just(Token::Less);
+        let op_le = just(Token::LessEqual);
+        let op_gr = just(Token::Greater);
+        let op_ge = just(Token::GreaterEqual);
+
+        atom.pratt((
+            infix(left(1), op_eq, |l, _, r, _| Expression::Equal {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(1), op_nq, |l, _, r, _| Expression::NotEqual {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(1), op_ls, |l, _, r, _| Expression::Less {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(1), op_le, |l, _, r, _| Expression::LessEqual {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(1), op_gr, |l, _, r, _| Expression::Greater {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(1), op_ge, |l, _, r, _| Expression::GreaterEqual {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(2), op_add, |l, _, r, _| Expression::Add {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(2), op_sub, |l, _, r, _| Expression::Sub {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(3), op_mul, |l, _, r, _| Expression::Mul {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(3), op_div, |l, _, r, _| Expression::Div {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+            infix(left(3), op_mod, |l, _, r, _| Expression::Mod {
+                lho: Box::new(l),
+                rho: Box::new(r),
+            }),
+        ))
+    })
 }
 
 pub fn parser_stmt<'src>()
