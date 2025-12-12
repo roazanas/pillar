@@ -44,8 +44,12 @@ n 5
 
 On Unix-like systems, you can install the Pillar compiler with just:
 
+> [!IMPORTANT]
+> Replace \<VERSION_HERE> to desired version
+> for example, v0.2.1
+
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/roazanas/pillar/releases/download/v0.2.1/pillar-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/roazanas/pillar/releases/download/<VERSION_HERE>/pillar-installer.sh | sh
 ```
 
 ## Windows
@@ -87,8 +91,12 @@ pacman -S mingw-w64-ucrt-x86_64-gcc
 
 Once GCC or another linker is installed, run following to install the Pillar compiler:
 
+> [!IMPORTANT]
+> Replace \<VERSION_HERE> to desired version
+> for example, v0.2.1
+
 ```ps1
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/roazanas/pillar/releases/download/v0.2.1/pillar-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/roazanas/pillar/releases/download/<VERSION_HERE>/pillar-installer.ps1 | iex"
 ```
 
 > (it will actually install without GCC, but you need linker to compile Pillar program)
