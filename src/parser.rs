@@ -30,6 +30,9 @@ pub enum Expression<'src> {
     LessEqual { lho: Box<Self>, rho: Box<Self> },
     Greater { lho: Box<Self>, rho: Box<Self> },
     GreaterEqual { lho: Box<Self>, rho: Box<Self> },
+
+    Neg { expr: Box<Self> },
+    Not { expr: Box<Self> },
 }
 
 #[derive(Debug, Clone)]
@@ -66,9 +69,12 @@ pub struct TypedVar<'src> {
 pub fn parser_expr<'src>()
 -> impl Parser<'src, &'src [Token<'src>], Expression<'src>, extra::Err<Rich<'src, Token<'src>>>> {
     recursive(|expr| {
-        let literal = select! {
+        let num_literals = select! {
             Token::IntLiteral(n) => Expression::Int(n),
             Token::FloatLiteral(n) => Expression::Float(n),
+        };
+
+        let literal = select! {
             Token::BooleanTrue => Expression::Boolean(true),
             Token::BooleanFalse => Expression::Boolean(false),
             Token::StringLiteral(s) => Expression::String(s),
@@ -79,7 +85,7 @@ pub fn parser_expr<'src>()
             .ignore_then(expr.clone())
             .then_ignore(just(Token::RightParen));
 
-        let atom = literal.or(parens);
+        let atom = literal.or(num_literals).or(parens);
 
         let op_add = just(Token::Plus);
         let op_sub = just(Token::Minus);
@@ -93,7 +99,12 @@ pub fn parser_expr<'src>()
         let op_gr = just(Token::Greater);
         let op_ge = just(Token::GreaterEqual);
 
+        let op_min = just(Token::Minus);
+        let op_not = just(Token::LogicalNot);
+
         atom.pratt((
+            prefix(4, op_min, |_, r, _| Expression::Neg { expr: Box::new(r) }),
+            prefix(4, op_not, |_, r, _| Expression::Not { expr: Box::new(r) }),
             infix(left(1), op_eq, |l, _, r, _| Expression::Equal {
                 lho: Box::new(l),
                 rho: Box::new(r),

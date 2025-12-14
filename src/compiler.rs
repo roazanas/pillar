@@ -140,6 +140,24 @@ impl IRCompiler {
                 builder.ins().srem(lho_compiled, rho_compiled)
             }
 
+            Expression::Neg { expr } => {
+                let expr_compiled = Self::compile_expr(builder, variables, expr);
+                let ty = builder.func.dfg.value_type(expr_compiled);
+
+                match ty {
+                    types::I64 => builder.ins().ineg(expr_compiled),
+                    types::F64 => builder.ins().fneg(expr_compiled),
+                    _ => panic!("Unary '-' is not supported for type {:?}", ty),
+                }
+            }
+
+            Expression::Not { expr } => {
+                let expr_compiled = Self::compile_expr(builder, variables, expr);
+                let ty = builder.func.dfg.value_type(expr_compiled);
+
+                builder.ins().bxor_imm(expr_compiled, 1)
+            }
+
             _ => todo!(),
         }
     }
