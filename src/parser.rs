@@ -212,10 +212,12 @@ pub fn parser_stmt<'src>()
         let stmt_if = just(Token::KeywordIf)
             .ignore_then(parser_expr().boxed())
             .then(block.clone())
-            .map(|(condition, code)| Statement::If {
+            .then_ignore(just(Token::KeywordElse).or_not())
+            .then(block.clone().or_not())
+            .map(|((condition, then_branch), else_branch)| Statement::If {
                 condition,
-                then_branch: code,
-                else_branch: None,
+                then_branch,
+                else_branch,
             });
 
         choice((stmt_let, stmt_fn, stmt_ret, stmt_if))
