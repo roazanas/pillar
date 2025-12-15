@@ -1,3 +1,4 @@
+use cranelift::prelude::InstBuilder;
 use std::collections::HashMap;
 
 use cranelift::{codegen::Context, prelude::*};
@@ -151,10 +152,54 @@ impl IRCompiler {
                 }
             }
 
+            Expression::Equal { lho, rho } => {
+                let lho_compiled = Self::compile_expr(builder, variables, lho);
+                let rho_compiled = Self::compile_expr(builder, variables, rho);
+                builder.ins().icmp(IntCC::Equal, lho_compiled, rho_compiled)
+            }
+
+            Expression::NotEqual { lho, rho } => {
+                let lho_compiled = Self::compile_expr(builder, variables, lho);
+                let rho_compiled = Self::compile_expr(builder, variables, rho);
+                builder
+                    .ins()
+                    .icmp(IntCC::NotEqual, lho_compiled, rho_compiled)
+            }
+
+            Expression::Greater { lho, rho } => {
+                let lho_compiled = Self::compile_expr(builder, variables, lho);
+                let rho_compiled = Self::compile_expr(builder, variables, rho);
+                builder
+                    .ins()
+                    .icmp(IntCC::SignedGreaterThan, lho_compiled, rho_compiled)
+            }
+
+            Expression::GreaterEqual { lho, rho } => {
+                let lho_compiled = Self::compile_expr(builder, variables, lho);
+                let rho_compiled = Self::compile_expr(builder, variables, rho);
+                builder
+                    .ins()
+                    .icmp(IntCC::SignedGreaterThanOrEqual, lho_compiled, rho_compiled)
+            }
+
+            Expression::Less { lho, rho } => {
+                let lho_compiled = Self::compile_expr(builder, variables, lho);
+                let rho_compiled = Self::compile_expr(builder, variables, rho);
+                builder
+                    .ins()
+                    .icmp(IntCC::SignedLessThan, lho_compiled, rho_compiled)
+            }
+
+            Expression::LessEqual { lho, rho } => {
+                let lho_compiled = Self::compile_expr(builder, variables, lho);
+                let rho_compiled = Self::compile_expr(builder, variables, rho);
+                builder
+                    .ins()
+                    .icmp(IntCC::SignedLessThanOrEqual, lho_compiled, rho_compiled)
+            }
+
             Expression::Not { expr } => {
                 let expr_compiled = Self::compile_expr(builder, variables, expr);
-                let ty = builder.func.dfg.value_type(expr_compiled);
-
                 builder.ins().bxor_imm(expr_compiled, 1)
             }
 
@@ -167,19 +212,79 @@ impl IRCompiler {
         next_var: &mut usize,
         variables: &mut HashMap<String, Variable>,
         stmt: &Statement,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         match stmt {
             Statement::Let { name, value } => {
                 let let_compiled = Self::compile_expr(builder, variables, value);
 
                 let var = Self::alloc_var(builder, next_var, variables, name);
                 builder.def_var(var, let_compiled);
-                Ok(())
+                Ok(false)
             }
             Statement::Ret { value } => {
                 let ret_compiled = Self::compile_expr(builder, variables, value);
                 builder.ins().return_(&[ret_compiled]);
-                Ok(())
+                Ok(true)
+            }
+            Statement::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let condition_val = Self::compile_expr(builder, variables, condition);
+
+                let then_block = builder.create_block();
+                let merge_block = builder.create_block();
+
+                let else_block = if else_branch.is_some() {
+                    builder.create_block()
+                } else {
+                    merge_block
+                };
+
+                builder
+                    .ins()
+                    .brif(condition_val, then_block, &[], else_block, &[]);
+
+                // then
+                builder.switch_to_block(then_block);
+                builder.seal_block(then_block);
+
+                let mut then_terminated = false;
+                for stmt in &then_branch.statements {
+                    if Self::compile_stmt(builder, next_var, variables, stmt)? {
+                        then_terminated = true;
+                        break;
+                    }
+                }
+
+                if !then_terminated {
+                    builder.ins().jump(merge_block, &[]);
+                }
+
+                // else
+                if let Some(else_branch_content) = else_branch {
+                    builder.switch_to_block(else_block);
+                    builder.seal_block(else_block);
+
+                    let mut then_terminated = false;
+                    for stmt in &else_branch_content.statements {
+                        if Self::compile_stmt(builder, next_var, variables, stmt)? {
+                            then_terminated = true;
+                            break;
+                        }
+                    }
+
+                    if !then_terminated {
+                        builder.ins().jump(merge_block, &[]);
+                    }
+                }
+
+                // merge
+                builder.switch_to_block(merge_block);
+                builder.seal_block(merge_block);
+
+                Ok(false)
             }
 
             _ => todo!(),

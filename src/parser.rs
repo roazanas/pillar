@@ -197,7 +197,7 @@ pub fn parser_stmt<'src>()
                     .collect::<Vec<_>>(),
             )
             .then_ignore(just(Token::RightParen))
-            .then(block)
+            .then(block.clone())
             .map(|((name, arguments), code)| Statement::Fn {
                 name,
                 arguments,
@@ -209,6 +209,15 @@ pub fn parser_stmt<'src>()
             .then_ignore(just(Token::Semicolon))
             .map(|value| Statement::Ret { value });
 
-        choice((stmt_let, stmt_fn, stmt_ret))
+        let stmt_if = just(Token::KeywordIf)
+            .ignore_then(parser_expr().boxed())
+            .then(block.clone())
+            .map(|(condition, code)| Statement::If {
+                condition,
+                then_branch: code,
+                else_branch: None,
+            });
+
+        choice((stmt_let, stmt_fn, stmt_ret, stmt_if))
     })
 }
