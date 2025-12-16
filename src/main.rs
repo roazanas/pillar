@@ -8,7 +8,7 @@ mod parser;
 mod transposer;
 
 use crate::cli::Args;
-use chumsky::Parser;
+use chumsky::{IterParser, Parser};
 use clap::Parser as CliParser;
 use log::debug;
 use owo_colors::OwoColorize;
@@ -61,7 +61,7 @@ fn main() {
         }
     };
 
-    let parser = parser::parser_stmt();
+    let parser = parser::parser_stmt().repeated().collect::<Vec<_>>();
     let ast_unprocesed = parser.parse(&tokens);
 
     if let Some(err) = ast_unprocesed.errors().next() {

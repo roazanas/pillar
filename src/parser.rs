@@ -18,21 +18,63 @@ pub enum Expression<'src> {
     String(&'src str),
     Identifier(&'src str),
 
-    Add { lho: Box<Self>, rho: Box<Self> },
-    Sub { lho: Box<Self>, rho: Box<Self> },
-    Mul { lho: Box<Self>, rho: Box<Self> },
-    Div { lho: Box<Self>, rho: Box<Self> },
-    Mod { lho: Box<Self>, rho: Box<Self> },
+    Add {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    Sub {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    Mul {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    Div {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    Mod {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
 
-    Equal { lho: Box<Self>, rho: Box<Self> },
-    NotEqual { lho: Box<Self>, rho: Box<Self> },
-    Less { lho: Box<Self>, rho: Box<Self> },
-    LessEqual { lho: Box<Self>, rho: Box<Self> },
-    Greater { lho: Box<Self>, rho: Box<Self> },
-    GreaterEqual { lho: Box<Self>, rho: Box<Self> },
+    Equal {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    NotEqual {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    Less {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    LessEqual {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    Greater {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
+    GreaterEqual {
+        lho: Box<Self>,
+        rho: Box<Self>,
+    },
 
-    Neg { expr: Box<Self> },
-    Not { expr: Box<Self> },
+    Neg {
+        expr: Box<Self>,
+    },
+    Not {
+        expr: Box<Self>,
+    },
+
+    Call {
+        name: &'src str,
+        arguments: Vec<Expression<'src>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +96,10 @@ pub enum Statement<'src> {
         then_branch: Block<'src>,
         else_branch: Option<Block<'src>>,
     },
+    Call {
+        name: &'src str,
+        arguments: Vec<Expression<'src>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -67,25 +113,41 @@ pub struct TypedVar<'src> {
 }
 
 pub fn parser_expr<'src>()
--> impl Parser<'src, &'src [Token<'src>], Expression<'src>, extra::Err<Rich<'src, Token<'src>>>> {
+-> impl Parser<'src, &'src [Token<'src>], Expression<'src>, extra::Err<Rich<'src, Token<'src>>>> + Clone
+{
     recursive(|expr| {
         let num_literals = select! {
             Token::IntLiteral(n) => Expression::Int(n),
             Token::FloatLiteral(n) => Expression::Float(n),
         };
 
-        let literal = select! {
+        let ident = select! { Token::Identifier(s) => s };
+
+        let call = ident
+            .then(
+                expr.clone()
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+            )
+            .map(|(name, args)| Expression::Call {
+                name,
+                arguments: args,
+            });
+
+        let literals = select! {
             Token::BooleanTrue => Expression::Boolean(true),
             Token::BooleanFalse => Expression::Boolean(false),
             Token::StringLiteral(s) => Expression::String(s),
-            Token::Identifier(s) => Expression::Identifier(s),
         };
+
+        let variable = ident.map(Expression::Identifier);
 
         let parens = just(Token::LeftParen)
             .ignore_then(expr.clone())
             .then_ignore(just(Token::RightParen));
 
-        let atom = literal.or(num_literals).or(parens);
+        let atom = call.or(variable).or(literals).or(num_literals).or(parens);
 
         let op_add = just(Token::Plus);
         let op_sub = just(Token::Minus);
@@ -151,6 +213,7 @@ pub fn parser_expr<'src>()
             }),
         ))
     })
+    .boxed()
 }
 
 pub fn parser_stmt<'src>()
@@ -220,6 +283,20 @@ pub fn parser_stmt<'src>()
                 else_branch,
             });
 
-        choice((stmt_let, stmt_fn, stmt_ret, stmt_if))
+        let stmt_call = ident_parser
+            .then_ignore(just(Token::LeftParen))
+            .then(
+                parser_expr()
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(Token::RightParen))
+            .then_ignore(just(Token::Semicolon))
+            .map(|(name, args)| Statement::Call {
+                name,
+                arguments: args,
+            });
+
+        choice((stmt_let, stmt_fn, stmt_ret, stmt_if, stmt_call))
     })
 }

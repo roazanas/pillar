@@ -23,27 +23,32 @@ impl IRCompiler {
     pub fn compile_program<M: Module>(
         &mut self,
         module: &mut M,
-        ast: Statement,
-    ) -> Result<FuncId, String> {
-        match ast {
-            Statement::Fn {
-                name,
-                arguments,
-                code,
-            } => {
-                let entry_params: Vec<Type> = arguments
-                    .iter()
-                    .map(|arg| translate(&arg.variables.0))
-                    .collect();
+        program: Vec<Statement>,
+    ) -> Result<(), String> {
+        for stmt in program {
+            match stmt {
+                Statement::Fn {
+                    name,
+                    arguments,
+                    code,
+                } => {
+                    let entry_params: Vec<Type> = arguments
+                        .iter()
+                        .map(|arg| translate(&arg.variables.0))
+                        .collect();
 
-                self.compile_function(module, name, &entry_params, Some(types::I64), code)
+                    self.compile_function(module, name, &entry_params, Some(types::I64), code)?;
+                }
+                _ => {
+                    return Err(format!(
+                        "{} {}",
+                        "Compilation error:".red().bold(),
+                        "Expected a function definition as the program entry point".white()
+                    ));
+                }
             }
-            _ => Err(format!(
-                "{} {}",
-                "Compilation error:".red().bold(),
-                "Expected a function definition as the program entry point".white()
-            )),
         }
+        Ok(())
     }
 
     pub fn compile_function<M: Module>(
@@ -127,7 +132,6 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
                     .unwrap_or_else(|| panic!("Unknown variable {name}"));
                 self.builder.use_var(*var)
             }
-
             Expression::Add { lho, rho } => {
                 let lhs = self.compile_expr(lho);
                 let rhs = self.compile_expr(rho);
@@ -165,7 +169,6 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
                 let rhs = self.compile_expr(rho);
                 self.builder.ins().srem(lhs, rhs)
             }
-
             Expression::Neg { expr } => {
                 let val = self.compile_expr(expr);
                 match self.builder.func.dfg.value_type(val) {
@@ -174,7 +177,6 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
                     _ => panic!("Unary '-' not supported for this type"),
                 }
             }
-
             Expression::Equal { lho, rho } => self.compile_cmp(IntCC::Equal, lho, rho),
             Expression::NotEqual { lho, rho } => self.compile_cmp(IntCC::NotEqual, lho, rho),
             Expression::Greater { lho, rho } => {
@@ -187,10 +189,29 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
             Expression::LessEqual { lho, rho } => {
                 self.compile_cmp(IntCC::SignedLessThanOrEqual, lho, rho)
             }
-
             Expression::Not { expr } => {
                 let val = self.compile_expr(expr);
                 self.builder.ins().bxor_imm(val, 1)
+            }
+            Expression::Call { name, arguments } => {
+                let mut sig = self.module.make_signature();
+                for _ in arguments {
+                    sig.params.push(AbiParam::new(types::I64));
+                }
+                sig.returns.push(AbiParam::new(types::I64));
+
+                let callee = self
+                    .module
+                    .declare_function(name, Linkage::Import, &sig)
+                    .unwrap();
+
+                let local_callee = self.module.declare_func_in_func(callee, self.builder.func);
+
+                let arg_values: Vec<Value> =
+                    arguments.iter().map(|arg| self.compile_expr(arg)).collect();
+
+                let call = self.builder.ins().call(local_callee, &arg_values);
+                self.builder.inst_results(call)[0]
             }
         }
     }
@@ -287,6 +308,28 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
                 // merge
                 self.builder.switch_to_block(merge_block);
                 self.builder.seal_block(merge_block);
+
+                Ok(false)
+            }
+            Statement::Call { name, arguments } => {
+                let mut sig = self.module.make_signature();
+
+                for _ in arguments {
+                    sig.params.push(AbiParam::new(types::I64));
+                }
+                sig.returns.push(AbiParam::new(types::I64));
+
+                let callee = self
+                    .module
+                    .declare_function(name, Linkage::Import, &sig)
+                    .map_err(|e| format!("Unable to declare function {}: {}", name, e))?;
+
+                let local_callee = self.module.declare_func_in_func(callee, self.builder.func);
+
+                let arg_values: Vec<Value> =
+                    arguments.iter().map(|arg| self.compile_expr(arg)).collect();
+
+                self.builder.ins().call(local_callee, &arg_values);
 
                 Ok(false)
             }

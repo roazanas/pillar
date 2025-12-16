@@ -1,10 +1,14 @@
+FN expr() {
+  RET 5 + 2*5 * (-2 + 3);
+}
+
 FN main() {
   LT x: float = 5.2;
   LT y: float = 4.8;
 
   IF (x > y) {
     LT z: float = x + y;
-    RET 5 + 2*5 * (-2 + 3);
+    RET expr();
   } EL {
     RET 1;
   }
