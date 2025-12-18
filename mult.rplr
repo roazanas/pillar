@@ -1,0 +1,21 @@
+FN main()
+{
+  LT i: int = 1~
+
+  WH i <= 10
+  {
+    LT j: int = 1~
+
+    WH j <= 10
+    {
+      LT result: int = i * j~
+      OUTI result~
+
+      j = j + 1~
+    }
+
+    i = i + 1~
+  }
+
+  RET 0~
+}

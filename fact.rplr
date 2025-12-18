@@ -1,0 +1,25 @@
+FN factorial(n: int)
+{
+  IF n <= 1
+  {
+    RET 1~
+  }
+
+  LT prev: int = n - 1~
+  LT result: int = factorial(prev)~
+  LT answer: int = n * result~
+  
+  RET answer~
+}
+
+FN main()
+{
+  LT n: int = 0~
+  INPI n~
+
+  LT fact: int = factorial(n)~
+  OUTI fact~
+
+  RET 0~
+}
+

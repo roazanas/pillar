@@ -1,0 +1,84 @@
+FN main()
+{
+  LT a: int = 0~
+  LT b: int = 0~
+  
+  INPI a~
+  INPI b~
+  
+  LT maximum: int = 0~
+  IF a > b
+  {
+    maximum = a~
+  }
+  EL
+  {
+    maximum = b~
+  }
+  OUTI maximum~
+  
+  LT diff: int = a - b~
+  OUTI diff~
+  
+  IF a != b
+  {
+    LT quotient: int = a / b~
+    OUTI quotient~
+  }
+  EL
+  {
+    OUTI 0~
+  }
+  
+  LT remainder: int = a % 2~
+  LT even: int = 0~
+  IF remainder == 0
+  {
+    even = 1~
+  }
+  OUTI even~
+  
+  LT sign: int = 0~
+  IF diff > 0
+  {
+    sign = 1~
+  }
+  EL
+  {
+    IF diff == 0
+    {
+      sign = 0~
+    }
+    EL
+    {
+      sign = -1~
+    }
+  }
+  OUTI sign~
+  
+  LT in_range: int = 1~
+  IF a < 0
+  {
+    in_range = 0~
+  }
+  IF a > 100
+  {
+    in_range = 0~
+  }
+  OUTI in_range~
+  
+  LT r: float = 0.0~
+  INPF r~
+  
+  LT pi: float = 3.14159~
+  LT area: float = pi * r * r~
+  OUTF area~
+  
+  LT temp: float = 0.0~
+  INPF temp~
+  
+  LT fahrenheit: float = temp * 1.8 + 32.0~
+  OUTF fahrenheit~
+  
+  RET 0~
+}

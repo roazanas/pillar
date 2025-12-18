@@ -72,10 +72,6 @@ pub enum Token<'input> {
     Greater,
     #[token(">=")]
     GreaterEqual,
-    #[token("&&")]
-    LogicalAnd,
-    #[token("||")]
-    LogicalOr,
     #[token("!")]
     LogicalNot,
 
@@ -89,8 +85,6 @@ pub enum Token<'input> {
     RightBrace,
     #[token(",")]
     Comma,
-    #[token(".")]
-    Dot,
     #[token(":")]
     Colon,
     #[token("~")]

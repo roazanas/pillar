@@ -1,0 +1,33 @@
+FN fibonacci(n: int)
+{
+  IF n <= 1
+  {
+    RET n~
+  }
+
+  LT a: int = 0~
+  LT b: int = 1~
+  LT i: int = 2~
+  LT result: int = 0~
+
+  WH i <= n
+  {
+    result = a + b~
+    a = b~
+    b = result~
+    i = i + 1~
+  }
+
+  RET result~
+}
+
+FN main()
+{
+  LT n: int = 0~
+  INPI n~
+
+  LT fib: int = fibonacci(n)~
+  OUTI fib~
+
+  RET 0~
+}
