@@ -1,9 +1,16 @@
 FN main() {
-  LT counter: int = 0;
+  LT x: int = 10;
+  OUTI x;
 
-  WH (counter < 5000000000) {
-      counter = counter + 1;
-  }
-  RET counter;
+  LT y: float = 3.14;
+  OUTF y;
+
+  INPI x;
+  INPF y;
+
+  OUTI x;
+  OUTF y;
+  
+  RET 0;
 }
 

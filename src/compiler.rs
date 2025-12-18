@@ -371,6 +371,94 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
                 self.builder.def_var(var, val);
                 Ok(false)
             }
+            Statement::InputInt { name } => {
+                let mut sig = self.module.make_signature();
+                sig.returns.push(AbiParam::new(types::I64));
+
+                let read_int_fn = self
+                    .module
+                    .declare_function("read_int", Linkage::Import, &sig)
+                    .map_err(|e| format!("Unable to declare read_int: {}", e))?;
+
+                let local_fn = self
+                    .module
+                    .declare_func_in_func(read_int_fn, self.builder.func);
+
+                let call = self.builder.ins().call(local_fn, &[]);
+                let result = self.builder.inst_results(call)[0];
+
+                let var = *self
+                    .variables
+                    .get(*name)
+                    .ok_or_else(|| format!("Undefined variable: {name}"))?;
+
+                self.builder.def_var(var, result);
+                Ok(false)
+            }
+
+            Statement::InputFloat { name } => {
+                let mut sig = self.module.make_signature();
+                sig.returns.push(AbiParam::new(types::F64));
+
+                let read_float_fn = self
+                    .module
+                    .declare_function("read_float", Linkage::Import, &sig)
+                    .map_err(|e| format!("Unable to declare read_float: {}", e))?;
+
+                let local_fn = self
+                    .module
+                    .declare_func_in_func(read_float_fn, self.builder.func);
+
+                let call = self.builder.ins().call(local_fn, &[]);
+                let result = self.builder.inst_results(call)[0];
+
+                let var = *self
+                    .variables
+                    .get(*name)
+                    .ok_or_else(|| format!("Undefined variable: {name}"))?;
+
+                self.builder.def_var(var, result);
+                Ok(false)
+            }
+
+            Statement::OutputInt { value } => {
+                let val = self.compile_expr(value);
+
+                let mut sig = self.module.make_signature();
+                sig.params.push(AbiParam::new(types::I64));
+
+                let print_int_fn = self
+                    .module
+                    .declare_function("print_int_ln", Linkage::Import, &sig)
+                    .map_err(|e| format!("Unable to declare print_int_ln: {}", e))?;
+
+                let local_fn = self
+                    .module
+                    .declare_func_in_func(print_int_fn, self.builder.func);
+
+                self.builder.ins().call(local_fn, &[val]);
+                Ok(false)
+            }
+
+            Statement::OutputFloat { value } => {
+                let val = self.compile_expr(value);
+
+                let mut sig = self.module.make_signature();
+                sig.params.push(AbiParam::new(types::F64));
+
+                let print_float_fn = self
+                    .module
+                    .declare_function("print_float_ln", Linkage::Import, &sig)
+                    .map_err(|e| format!("Unable to declare print_float_ln: {}", e))?;
+
+                let local_fn = self
+                    .module
+                    .declare_func_in_func(print_float_fn, self.builder.func);
+
+                self.builder.ins().call(local_fn, &[val]);
+                Ok(false)
+            }
+
             Statement::Fn { .. } => Err("Nested functions are not supported".to_string()),
         }
     }

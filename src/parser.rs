@@ -109,6 +109,18 @@ pub enum Statement<'src> {
         name: &'src str,
         value: Expression<'src>,
     },
+    InputInt {
+        name: &'src str,
+    },
+    InputFloat {
+        name: &'src str,
+    },
+    OutputInt {
+        value: Expression<'src>,
+    },
+    OutputFloat {
+        value: Expression<'src>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -317,6 +329,26 @@ pub fn parser_stmt<'src>()
             .then_ignore(just(Token::Semicolon))
             .map(|(name, expr)| Statement::Assign { name, value: expr });
 
+        let stmt_input_int = just(Token::KeywordInputInt)
+            .ignore_then(ident_parser)
+            .then_ignore(just(Token::Semicolon))
+            .map(|name| Statement::InputInt { name });
+
+        let stmt_input_float = just(Token::KeywordInputFloat)
+            .ignore_then(ident_parser)
+            .then_ignore(just(Token::Semicolon))
+            .map(|name| Statement::InputFloat { name });
+
+        let stmt_output_int = just(Token::KeywordOutputInt)
+            .ignore_then(parser_expr().boxed())
+            .then_ignore(just(Token::Semicolon))
+            .map(|value| Statement::OutputInt { value });
+
+        let stmt_output_float = just(Token::KeywordOutputFloat)
+            .ignore_then(parser_expr().boxed())
+            .then_ignore(just(Token::Semicolon))
+            .map(|value| Statement::OutputFloat { value });
+
         choice((
             stmt_let,
             stmt_fn,
@@ -325,6 +357,10 @@ pub fn parser_stmt<'src>()
             stmt_call,
             stmt_while,
             stmt_assign,
+            stmt_input_int,
+            stmt_input_float,
+            stmt_output_int,
+            stmt_output_float,
         ))
     })
 }

@@ -30,6 +30,14 @@ pub enum Token<'input> {
     KeywordContinue,
     #[token("LP")]
     KeywordLoop,
+    #[token("INPI")]
+    KeywordInputInt,
+    #[token("INPF")]
+    KeywordInputFloat,
+    #[token("OUTI")]
+    KeywordOutputInt,
+    #[token("OUTF")]
+    KeywordOutputFloat,
 
     #[token("true")]
     BooleanTrue,

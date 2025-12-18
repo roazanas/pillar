@@ -53,12 +53,14 @@ impl AOTBackend {
         let status = if cfg!(target_os = "windows") {
             Command::new("gcc")
                 .arg(&obj_path)
+                .arg("runtime.o")
                 .arg("-o")
                 .arg(&self.output_path)
                 .status()
         } else {
             Command::new("cc")
                 .arg(&obj_path)
+                .arg("runtime.o")
                 .arg("-o")
                 .arg(&self.output_path)
                 .status()
