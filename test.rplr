@@ -1,16 +1,13 @@
-FN main() {
-  LT x: int = 10;
-  OUTI x;
+FN print(x: int)
+{
+  OUTI x~
+}
 
-  LT y: float = 3.14;
-  OUTF y;
-
-  INPI x;
-  INPF y;
-
-  OUTI x;
-  OUTF y;
+FN main()
+{
+  LT x: int = 5~
+  print(x)~
   
-  RET 0;
+  RET 0~
 }
 

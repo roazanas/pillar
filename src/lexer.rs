@@ -121,8 +121,8 @@ pub enum Token<'input> {
     Dot,
     #[token(":")]
     Colon,
-    #[token(";")]
-    Semicolon,
+    #[token("~")]
+    Tilda,
 }
 
 pub fn tokenize(input: &str) -> Result<Vec<Token<'_>>, LexError> {

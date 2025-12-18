@@ -31,11 +31,11 @@ pub fn emit_parser_error(err: &Rich<Token>, tokens: &[Token]) {
         span,
         tokens
             .get(span.start.saturating_sub(1))
-            .unwrap_or(&Token::Semicolon),
+            .unwrap_or(&Token::Tilda),
         "->".bright_black(),
         tokens
             .get(span.end.saturating_sub(1))
-            .unwrap_or(&Token::Semicolon),
+            .unwrap_or(&Token::Tilda),
         "expected".red().bold(),
         err.expected()
             .map(|e| format!("{e:?}"))

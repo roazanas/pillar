@@ -268,7 +268,7 @@ pub fn parser_stmt<'src>()
             .then(type_parser)
             .then_ignore(just(Token::Assign))
             .then(parser_expr().boxed())
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|((name, _typ), expr)| Statement::Let { name, value: expr });
 
         let stmt_fn = just(Token::KeywordFn)
@@ -289,7 +289,7 @@ pub fn parser_stmt<'src>()
 
         let stmt_ret = just(Token::KeywordReturn)
             .ignore_then(parser_expr().boxed())
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|value| Statement::Ret { value });
 
         let stmt_if = just(Token::KeywordIf)
@@ -311,7 +311,7 @@ pub fn parser_stmt<'src>()
                     .collect::<Vec<_>>(),
             )
             .then_ignore(just(Token::RightParen))
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|(name, args)| Statement::Call {
                 name,
                 arguments: args,
@@ -325,27 +325,27 @@ pub fn parser_stmt<'src>()
         let stmt_assign = ident_parser
             .then_ignore(just(Token::Assign))
             .then(parser_expr().boxed())
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|(name, expr)| Statement::Assign { name, value: expr });
 
         let stmt_input_int = just(Token::KeywordInputInt)
             .ignore_then(ident_parser)
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|name| Statement::InputInt { name });
 
         let stmt_input_float = just(Token::KeywordInputFloat)
             .ignore_then(ident_parser)
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|name| Statement::InputFloat { name });
 
         let stmt_output_int = just(Token::KeywordOutputInt)
             .ignore_then(parser_expr().boxed())
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|value| Statement::OutputInt { value });
 
         let stmt_output_float = just(Token::KeywordOutputFloat)
             .ignore_then(parser_expr().boxed())
-            .then_ignore(just(Token::Semicolon))
+            .then_ignore(just(Token::Tilda))
             .map(|value| Statement::OutputFloat { value });
 
         choice((
