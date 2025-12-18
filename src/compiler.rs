@@ -333,6 +333,33 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
 
                 Ok(false)
             }
+            Statement::While { condition, body } => {
+                let loop_header = self.builder.create_block();
+                let loop_body = self.builder.create_block();
+                let loop_exit = self.builder.create_block();
+
+                self.builder.ins().jump(loop_header, &[]);
+
+                self.builder.switch_to_block(loop_header);
+                self.builder.seal_block(loop_header);
+
+                let cond = self.compile_expr(condition);
+                self.builder
+                    .ins()
+                    .brif(cond, loop_body, &[], loop_exit, &[]);
+
+                self.builder.switch_to_block(loop_body);
+                self.builder.seal_block(loop_body);
+                for stmt in &body.statements {
+                    self.compile_stmt(stmt)?;
+                }
+                self.builder.ins().jump(loop_header, &[]);
+
+                self.builder.switch_to_block(loop_exit);
+                self.builder.seal_block(loop_exit);
+
+                Ok(false)
+            }
             Statement::Fn { .. } => Err("Nested functions are not supported".to_string()),
         }
     }

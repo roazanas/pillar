@@ -1,4 +1,5 @@
 use crate::lexer::Token;
+use chumsky::combinator::To;
 use chumsky::pratt::*;
 use chumsky::prelude::*;
 
@@ -99,6 +100,10 @@ pub enum Statement<'src> {
     Call {
         name: &'src str,
         arguments: Vec<Expression<'src>>,
+    },
+    While {
+        condition: Expression<'src>,
+        body: Block<'src>,
     },
 }
 
@@ -297,6 +302,11 @@ pub fn parser_stmt<'src>()
                 arguments: args,
             });
 
-        choice((stmt_let, stmt_fn, stmt_ret, stmt_if, stmt_call))
+        let stmt_while = just(Token::KeywordWhile)
+            .ignore_then(parser_expr().boxed())
+            .then(block.clone())
+            .map(|(condition, body)| Statement::While { condition, body });
+
+        choice((stmt_let, stmt_fn, stmt_ret, stmt_if, stmt_call, stmt_while))
     })
 }
