@@ -5,7 +5,7 @@ use cranelift::prelude::*;
 use cranelift_module::{FuncId, Linkage, Module};
 use owo_colors::OwoColorize;
 
-use crate::parser::{Block, Expression, Statement};
+use crate::parser::{Block, Expression, Statement, TypedVar};
 
 pub struct IRCompiler {
     builder_context: FunctionBuilderContext,
@@ -32,12 +32,7 @@ impl IRCompiler {
                     arguments,
                     code,
                 } => {
-                    let entry_params: Vec<Type> = arguments
-                        .iter()
-                        .map(|arg| translate(&arg.variables.0))
-                        .collect();
-
-                    self.compile_function(module, name, &entry_params, Some(types::I64), code)?;
+                    self.compile_function(module, name, &arguments, Some(types::I64), code)?;
                 }
                 _ => {
                     return Err(format!(
@@ -51,17 +46,17 @@ impl IRCompiler {
         Ok(())
     }
 
-    pub fn compile_function<M: Module>(
+    pub fn compile_function<'src, M: Module>(
         &mut self,
         module: &mut M,
         name: &str,
-        arguments: &[Type],
+        arguments: &[TypedVar<'src>],
         return_type: Option<Type>,
-        code: Block,
+        code: Block<'src>,
     ) -> Result<FuncId, String> {
         let mut sig = module.make_signature();
-        for &param in arguments {
-            sig.params.push(AbiParam::new(param));
+        for arg in arguments {
+            sig.params.push(AbiParam::new(translate(&arg.variables.0)));
         }
         if let Some(ret) = return_type {
             sig.returns.push(AbiParam::new(ret));
@@ -86,14 +81,25 @@ impl IRCompiler {
             module,
         };
 
-        for (i, arg_type) in arguments.iter().enumerate() {
+        for (i, arg) in arguments.iter().enumerate() {
             let val = function_compiler.builder.block_params(entry_block)[i];
-            let var = function_compiler.builder.declare_var(*arg_type);
+            let arg_type = translate(&arg.variables.0);
+            let var = function_compiler.builder.declare_var(arg_type);
             function_compiler.builder.def_var(var, val);
+            function_compiler.variables.insert(arg.variables.1, var);
         }
 
+        let mut has_returned = false;
         for stmt in code.statements {
-            function_compiler.compile_stmt(&stmt)?;
+            if function_compiler.compile_stmt(&stmt)? {
+                has_returned = true;
+                break;
+            }
+        }
+
+        if !has_returned {
+            let zero = builder.ins().iconst(types::I64, 0);
+            builder.ins().return_(&[zero]);
         }
 
         builder.finalize();
@@ -110,13 +116,13 @@ impl IRCompiler {
 
 struct FunctionCompiler<'a, 'b: 'a, M: Module + ?Sized> {
     builder: &'a mut FunctionBuilder<'b>,
-    variables: HashMap<String, Variable>,
+    variables: HashMap<&'a str, Variable>,
     #[allow(dead_code)]
     module: &'a mut M,
 }
 
 impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
-    fn compile_expr(&mut self, expr: &Expression) -> Value {
+    fn compile_expr(&mut self, expr: &Expression<'a>) -> Value {
         match expr {
             Expression::Int(n) => self.builder.ins().iconst(types::I64, *n),
             Expression::Float(n) => self.builder.ins().f64const(*n),
@@ -216,7 +222,7 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
         }
     }
 
-    fn compile_cmp(&mut self, cc: IntCC, lho: &Expression, rho: &Expression) -> Value {
+    fn compile_cmp(&mut self, cc: IntCC, lho: &Expression<'a>, rho: &Expression<'a>) -> Value {
         let lhs = self.compile_expr(lho);
         let rhs = self.compile_expr(rho);
 
@@ -237,14 +243,14 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
         }
     }
 
-    fn compile_stmt(&mut self, stmt: &Statement) -> Result<bool, String> {
+    fn compile_stmt(&mut self, stmt: &Statement<'a>) -> Result<bool, String> {
         match stmt {
             Statement::Let { name, value } => {
                 let val = self.compile_expr(value);
                 let ty = self.builder.func.dfg.value_type(val);
 
                 let var = self.builder.declare_var(ty);
-                self.variables.insert(name.to_string(), var);
+                self.variables.insert(name, var);
 
                 self.builder.def_var(var, val);
                 Ok(false)

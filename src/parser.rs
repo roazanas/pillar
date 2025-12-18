@@ -1,5 +1,4 @@
 use crate::lexer::Token;
-use chumsky::combinator::To;
 use chumsky::pratt::*;
 use chumsky::prelude::*;
 
