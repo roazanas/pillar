@@ -341,7 +341,6 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
                 self.builder.ins().jump(loop_header, &[]);
 
                 self.builder.switch_to_block(loop_header);
-                self.builder.seal_block(loop_header);
 
                 let cond = self.compile_expr(condition);
                 self.builder
@@ -349,15 +348,27 @@ impl<'a, 'b, M: Module + ?Sized> FunctionCompiler<'a, 'b, M> {
                     .brif(cond, loop_body, &[], loop_exit, &[]);
 
                 self.builder.switch_to_block(loop_body);
-                self.builder.seal_block(loop_body);
                 for stmt in &body.statements {
                     self.compile_stmt(stmt)?;
                 }
                 self.builder.ins().jump(loop_header, &[]);
 
+                self.builder.seal_block(loop_body);
+                self.builder.seal_block(loop_header);
+
                 self.builder.switch_to_block(loop_exit);
                 self.builder.seal_block(loop_exit);
 
+                Ok(false)
+            }
+            Statement::Assign { name, value } => {
+                let val = self.compile_expr(value);
+                let var = *self
+                    .variables
+                    .get(*name)
+                    .ok_or_else(|| format!("Undefined variable: {name}"))?;
+
+                self.builder.def_var(var, val);
                 Ok(false)
             }
             Statement::Fn { .. } => Err("Nested functions are not supported".to_string()),

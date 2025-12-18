@@ -105,6 +105,10 @@ pub enum Statement<'src> {
         condition: Expression<'src>,
         body: Block<'src>,
     },
+    Assign {
+        name: &'src str,
+        value: Expression<'src>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -307,6 +311,20 @@ pub fn parser_stmt<'src>()
             .then(block.clone())
             .map(|(condition, body)| Statement::While { condition, body });
 
-        choice((stmt_let, stmt_fn, stmt_ret, stmt_if, stmt_call, stmt_while))
+        let stmt_assign = ident_parser
+            .then_ignore(just(Token::Assign))
+            .then(parser_expr().boxed())
+            .then_ignore(just(Token::Semicolon))
+            .map(|(name, expr)| Statement::Assign { name, value: expr });
+
+        choice((
+            stmt_let,
+            stmt_fn,
+            stmt_ret,
+            stmt_if,
+            stmt_call,
+            stmt_while,
+            stmt_assign,
+        ))
     })
 }

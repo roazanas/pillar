@@ -1,17 +1,9 @@
-FN expr() {
-  RET 5 + 2*5 * (-2 + 3);
-}
-
 FN main() {
-  LT x: float = 5.2;
-  LT y: float = 4.8;
+  LT counter: int = 0;
 
-  IF (x > y) {
-    LT z: float = x + y;
-    RET expr();
-  } EL {
-    RET 1;
+  WH (counter < 5000000000) {
+      counter = counter + 1;
   }
-  RET 0;
+  RET counter;
 }
 
