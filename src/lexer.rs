@@ -12,24 +12,10 @@ pub enum Token<'input> {
     KeywordReturn,
     #[token("IF")]
     KeywordIf,
-    #[token("EI")]
-    KeywordElseIf,
     #[token("EL")]
     KeywordElse,
-    #[token("FR")]
-    KeywordFor,
-    #[token("BY")]
-    KeywordBy,
-    #[token("IN")]
-    KeywordIn,
     #[token("WH")]
     KeywordWhile,
-    #[token("BR")]
-    KeywordBreak,
-    #[token("CN")]
-    KeywordContinue,
-    #[token("LP")]
-    KeywordLoop,
     #[token("INPI")]
     KeywordInputInt,
     #[token("INPF")]
@@ -93,16 +79,6 @@ pub enum Token<'input> {
     #[token("!")]
     LogicalNot,
 
-    #[token("..")]
-    RangeExclusive,
-    #[token("..=")]
-    RangeInclusive,
-
-    #[token("->")]
-    Arrow,
-    #[token("=>")]
-    FatArrow,
-
     #[token("(")]
     LeftParen,
     #[token(")")]
@@ -111,10 +87,6 @@ pub enum Token<'input> {
     LeftBrace,
     #[token("}")]
     RightBrace,
-    #[token("[")]
-    LeftBracket,
-    #[token("]")]
-    RightBracket,
     #[token(",")]
     Comma,
     #[token(".")]
