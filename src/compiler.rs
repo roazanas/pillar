@@ -9,6 +9,7 @@ use crate::parser::{Block, Expression, Statement, TypedVar};
 
 pub struct IRCompiler {
     builder_context: FunctionBuilderContext,
+    #[allow(dead_code)]
     data_context: Context,
 }
 

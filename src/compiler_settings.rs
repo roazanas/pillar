@@ -3,7 +3,6 @@ use target_lexicon::Triple;
 
 pub struct CompilerSettings {
     target_triple: Triple,
-    flags: settings::Flags,
     isa: isa::OwnedTargetIsa,
 }
 
@@ -32,15 +31,7 @@ impl CompilerSettings {
             .finish(flags.clone())
             .map_err(|e| format!("Unable to create ISA: {e}"))?;
 
-        Ok(Self {
-            target_triple,
-            flags,
-            isa,
-        })
-    }
-
-    pub fn isa(&self) -> &dyn isa::TargetIsa {
-        &*self.isa
+        Ok(Self { target_triple, isa })
     }
 
     pub fn isa_owned(&self) -> isa::OwnedTargetIsa {
