@@ -505,6 +505,31 @@ fn concurrent_builds_do_not_share_temporary_files() {
 }
 
 #[test]
+fn linked_executables_can_start_during_parallel_builds() {
+    let a = analysis("FN main(): int { OUTI 42~ RET 0~ }");
+    let program = a.program.as_ref().unwrap();
+    let dir = tempfile::Builder::new()
+        .prefix("pillar parallel exec ")
+        .tempdir()
+        .unwrap();
+    std::thread::scope(|scope| {
+        let directory = dir.path();
+        for worker in 0..4 {
+            scope.spawn(move || {
+                for iteration in 0..8 {
+                    let executable = directory.join(format!("program-{worker}-{iteration}.exe"));
+                    aot_backend::build(program, &executable, &BuildOptions::default()).unwrap();
+                    let output = Command::new(&executable).output().unwrap();
+                    assert!(output.status.success());
+                    assert_eq!(output.stdout, b"42\n");
+                    assert!(output.stderr.is_empty());
+                }
+            });
+        }
+    });
+}
+
+#[test]
 fn analysis_assigns_its_own_source_ids() {
     let source = SourceFile::vertical(42, "source.plr", vertical("FN main(): int { RET 0~ }"));
     let a = pillar::analyze_source(source);

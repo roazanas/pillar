@@ -95,11 +95,9 @@ pub fn link(object: &[u8], path: &Path, options: &BuildOptions) -> Result<()> {
             String::from_utf8_lossy(&result.stderr)
         )));
     }
-    let bytes = std::fs::read(&output).map_err(|e| fail(e.to_string()))?;
-    let permissions = std::fs::metadata(&output)
-        .map_err(|e| fail(e.to_string()))?
-        .permissions();
-    atomic_write(path, &bytes, Some(permissions))
+    // Publish the linker's closed inode. Reopening it for writing can race with
+    // parallel fork/exec and cause ETXTBSY on Linux.
+    std::fs::rename(&output, path)
         .map_err(|e| fail(format!("cannot install executable {}: {e}", path.display())))?;
     Ok(())
 }
