@@ -1,0 +1,37 @@
+{
+  "compiler": "plrc 2.0.0-alpha.1",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "date": "2026-10-31",
+  "repeats": 3,
+  "note": "Native ARM64 macOS; wall times include process startup. RSS is cumulative child peak, not per-stage allocation. Built with Xcode 26.5 SDK.",
+  "results": [
+    {
+      "functions": 10,
+      "source_bytes": 1518,
+      "check_seconds": 0.009154667030088603,
+      "build_seconds": 0.0948381670168601,
+      "run_seconds": 0.020328166021499783,
+      "binary_bytes": 72584,
+      "cumulative_peak_child_rss_bytes": 39796736
+    },
+    {
+      "functions": 100,
+      "source_bytes": 7910,
+      "check_seconds": 0.014260834024753422,
+      "build_seconds": 0.11760087503353134,
+      "run_seconds": 0.022807582980021834,
+      "binary_bytes": 97384,
+      "cumulative_peak_child_rss_bytes": 40108032
+    },
+    {
+      "functions": 1000,
+      "source_bytes": 74962,
+      "check_seconds": 0.017627209017518908,
+      "build_seconds": 0.1517497079912573,
+      "run_seconds": 0.01636629196582362,
+      "binary_bytes": 479992,
+      "cumulative_peak_child_rss_bytes": 41598976
+    }
+  ]
+}

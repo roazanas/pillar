@@ -1,0 +1,74 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    name: Native (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, target: x86_64-unknown-linux-gnu}
+          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu}
+          - {os: macos-15-intel, target: x86_64-apple-darwin}
+          - {os: macos-15, target: aarch64-apple-darwin}
+          - {os: windows-2025, target: x86_64-pc-windows-msvc}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select pinned Rust
+        run: rustup show active-toolchain
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check lints
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+      - name: Run compiler, CLI and LSP regressions
+        run: cargo test --all-targets --all-features --locked
+      - name: Fuzz frontend and formatting invariants
+        run: cargo run --locked --features fuzzing --bin plrc-fuzz -- 10000
+      - name: Check runtime with ASan/UBSan/LSan
+        if: matrix.os == 'ubuntu-24.04'
+        run: python3 tools/check_memory.py
+      - name: Build release compiler
+        run: cargo build --release --locked --bin plrc
+      - name: Check optimized runtime arithmetic
+        run: |
+          cargo test --release --test language checked_integer_boundaries_in_both_modes --locked
+          cargo test --release --test language floating_division_by_zero_in_both_modes --locked
+      - name: Package and run extracted compiler in a clean directory
+        shell: bash
+        run: python3 tools/package.py --binary target/release/plrc${{ runner.os == 'Windows' && '.exe' || '' }} --target '${{ matrix.target }}'
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: pillar-${{ matrix.target }}
+          path: target/packages/*
+          if-no-files-found: error
+  tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: node --test editor/columns.test.js
+      - run: npm ci --ignore-scripts
+        working-directory: editor/vscode
+      - run: npm run check
+        working-directory: editor/vscode
+      - run: python3 -m unittest discover -s playground -p 'test_*.py'
+      - name: Verify constrained playground execution
+        run: |
+          docker build -f playground/Dockerfile -t pillar-playground:local .
+          python3 playground/smoke.py

@@ -1,0 +1,115 @@
+IM "position.plr" AS pos~
+IM "moves.plr" AS rules~
+IM "fixtures.plr" AS fixtures~
+IM "search.plr" AS engine~
+
+FN verify(name: str, condition: bool) {
+  IF !condition { println("FAIL " + name)~ assert(false)~ }
+  println("PASS " + name)~
+}
+
+FN has(p: pos::Position, text: str): bool {
+  LT list = rules::legal(p)~
+  LT i = 0~
+  WH i < len(list) {
+    IF pos::notation(list[i]) == text { RET true~ }
+    i = i + 1~
+  }
+  RET false~
+}
+
+FN find(p: pos::Position, text: str): pos::Move {
+  LT list = rules::legal(p)~
+  LT i = 0~
+  WH i < len(list) {
+    IF pos::notation(list[i]) == text { RET list[i]~ }
+    i = i + 1~
+  }
+  println("Missing legal move: " + text)~ assert(false)~
+  RET pos::move(0, 0, 0, 0)~
+}
+
+PUB FN run(full: bool) {
+  LT first: [int] = [20, 48, 14, 6, 44, 46]~
+  LT second: [int] = [400, 2039, 191, 264, 1486, 2079]~
+  LT third: [int] = [8902, 97862, 2812, 9467, 62379, 89890]~
+  LT i = 0~
+  WH i < 6 {
+    LT p = fixtures::get(i)~
+    verify("perft position " + str(i) + " depth 1", rules::perft(p, 1) == first[i])~
+    verify("perft position " + str(i) + " depth 2", rules::perft(p, 2) == second[i])~
+    IF full { verify("perft position " + str(i) + " depth 3", rules::perft(p, 3) == third[i])~ }
+    i = i + 1~
+  }
+  verify("start depth 3", rules::perft(pos::initial(), 3) == 8902)~
+  IF full { verify("start depth 4", rules::perft(pos::initial(), 4) == 197281)~ }
+
+  LT original = pos::initial()~
+  LT changed = pos::play(original, find(original, "e2e4"))~
+  verify("value semantics", (original.cells[35] == 1) && (original.cells[55] == 0) && (original.turn == 1))~
+  verify("double pawn step", (changed.cells[35] == 0) && (changed.cells[55] == 1) && (changed.ep == 45))~
+  verify("turn and clocks", (changed.turn == -1) && (changed.fullmove == 1) && (changed.halfmove == 0))~
+
+  LT p = pos::empty()~
+  p.cells[25] = 6~ p.cells[95] = -6~ p.cells[21] = 4~ p.cells[28] = 4~
+  p.castle = [true, true, false, false]~
+  verify("both castlings", has(p, "e1g1") && has(p, "e1c1"))~
+  LT castled = pos::play(p, find(p, "e1g1"))~
+  verify("castling rook and king", (castled.cells[27] == 6) && (castled.cells[26] == 4) && (castled.cells[28] == 0))~
+  verify("castling rights consumed", !castled.castle[0] && !castled.castle[1])~
+  p.cells[96] = -4~
+  verify("cannot castle through attack", !has(p, "e1g1") && has(p, "e1c1"))~
+  p.cells[96] = 0~ p.cells[28] = 0~
+  verify("cannot castle without rook", !has(p, "e1g1"))~
+
+  p = pos::empty()~
+  p.cells[21] = 6~ p.white_king = 21~ p.cells[98] = -6~ p.black_king = 98~
+  p.cells[65] = 1~ p.cells[64] = -1~ p.ep = 74~
+  LT ep = pos::play(p, find(p, "e5d6"))~
+  verify("en passant removes pawn", (ep.cells[74] == 1) && (ep.cells[64] == 0) && (ep.cells[65] == 0))~
+  p = pos::empty()~
+  p.cells[68] = 6~ p.white_king = 68~ p.cells[98] = -6~ p.black_king = 98~
+  p.cells[67] = 1~ p.cells[66] = -1~ p.cells[61] = -4~ p.ep = 76~
+  verify("en passant cannot expose king", !has(p, "g5f6"))~
+
+  p = pos::empty()~
+  p.cells[28] = 6~ p.white_king = 28~ p.cells[98] = -6~ p.black_king = 98~
+  p.cells[81] = 1~
+  verify("all four promotions", has(p, "a7a8n") && has(p, "a7a8b") && has(p, "a7a8r") && has(p, "a7a8q"))~
+  LT promoted = pos::play(p, find(p, "a7a8n"))~
+  verify("underpromotion applied", promoted.cells[91] == 2)~
+
+  p = pos::empty()~
+  p.cells[73] = 6~ p.white_king = 73~ p.cells[91] = -6~ p.black_king = 91~ p.turn = -1~
+  p.cells[82] = 5~
+  verify("checkmate", (len(rules::legal(p)) == 0) && rules::in_check(p))~
+  p.cells[82] = 0~ p.cells[72] = 5~
+  verify("stalemate", (len(rules::legal(p)) == 0) && !rules::in_check(p))~
+  p.cells[72] = 0~
+  verify("bare kings", rules::dead_material(p))~
+  p.cells[72] = 2~
+  verify("single minor dead position", rules::dead_material(p))~
+  p.cells[74] = 2~
+  verify("two knights not automatically dead", !rules::dead_material(p))~
+
+  p = pos::initial()~
+  LT initial_key = rules::key(p, rules::legal(p))~
+  p.ep = 45~
+  verify("irrelevant ep excluded from repetition", rules::key(p, rules::legal(p)) == initial_key)~
+  p.ep = 0~ p.castle[0] = false~
+  verify("castling rights affect repetition", rules::key(p, rules::legal(p)) != initial_key)~
+  p = pos::initial()~
+  p = pos::play(p, find(p, "g1f3"))~ p = pos::play(p, find(p, "g8f6"))~
+  p = pos::play(p, find(p, "f3g1"))~ p = pos::play(p, find(p, "f6g8"))~
+  verify("repeated position ignores move counters", rules::key(p, rules::legal(p)) == initial_key)~
+
+  p = pos::empty()~
+  p.cells[76] = 6~ p.white_king = 76~ p.cells[98] = -6~ p.black_king = 98~ p.cells[77] = 5~
+  LT found = engine::think(p, 2, 5000, false)~
+  verify("search finds a move", found.completed && (len(found.pv) > 0))~
+  p = pos::play(p, found.pv[0])~
+  verify("search finds mate in one", (len(rules::legal(p)) == 0) && rules::in_check(p))~
+  LT limited = engine::think(pos::initial(), 4, 1, false)~
+  verify("search budget preserves legal fallback", !limited.completed && (limited.nodes <= 1) && (len(limited.pv) == 1))~
+  println("SELFTEST OK")~
+}

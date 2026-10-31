@@ -1,365 +1,862 @@
-use crate::lexer::Token;
-use chumsky::pratt::*;
-use chumsky::prelude::*;
+use crate::{
+    diagnostics::{Diagnostic, Result},
+    lexer::{Kind, Token},
+    source::Span,
+};
+use serde::Serialize;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Type {
     Int,
     Float,
-    Boolean,
-    String,
+    Bool,
+    Str,
+    Unit,
+    Array(Box<Type>),
+    Named(Vec<String>),
+    Struct(usize),
+    Unknown,
 }
-
-#[derive(Debug, Clone)]
-pub enum Expression<'src> {
+impl Type {
+    pub fn reference(&self) -> bool {
+        matches!(self, Self::Str | Self::Array(_) | Self::Struct(_))
+    }
+    pub fn tag(&self) -> i64 {
+        match self {
+            Self::Int => 0,
+            Self::Float => 1,
+            Self::Bool => 2,
+            Self::Str => 3,
+            Self::Array(_) => 4,
+            Self::Struct(_) => 5,
+            _ => 6,
+        }
+    }
+}
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Int => write!(f, "int"),
+            Self::Float => write!(f, "float"),
+            Self::Bool => write!(f, "bool"),
+            Self::Str => write!(f, "str"),
+            Self::Unit => write!(f, "unit"),
+            Self::Array(t) => write!(f, "[{t}]"),
+            Self::Named(p) => write!(f, "{}", p.join("::")),
+            Self::Struct(id) => write!(f, "struct#{id}"),
+            Self::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum Op {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    Neg,
+    Not,
+}
+impl Op {
+    pub fn comparison(self) -> bool {
+        matches!(
+            self,
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge
+        )
+    }
+}
+#[derive(Clone, Debug, Serialize)]
+pub enum Target {
+    Function(usize),
+    Builtin(String),
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+    pub ty: Type,
+    pub height: usize,
+}
+#[derive(Clone, Debug, Serialize)]
+pub enum ExprKind {
     Int(i64),
     Float(f64),
-    Boolean(bool),
-    String(&'src str),
-    Identifier(&'src str),
-
-    Add {
-        lho: Box<Self>,
-        rho: Box<Self>,
+    Bool(bool),
+    Str(String),
+    Var {
+        name: String,
+        id: usize,
     },
-    Sub {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    Mul {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    Div {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    Mod {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-
-    Equal {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    NotEqual {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    Less {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    LessEqual {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    Greater {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-    GreaterEqual {
-        lho: Box<Self>,
-        rho: Box<Self>,
-    },
-
-    Neg {
-        expr: Box<Self>,
-    },
-    Not {
-        expr: Box<Self>,
-    },
-
+    Unary(Op, Box<Expr>),
+    Binary(Op, Box<Expr>, Box<Expr>),
+    Group(Box<Expr>),
     Call {
-        name: &'src str,
-        arguments: Vec<Expression<'src>>,
+        name: Vec<String>,
+        args: Vec<Expr>,
+        target: Option<Target>,
+    },
+    Array(Vec<Expr>),
+    Index(Box<Expr>, Box<Expr>),
+    Field {
+        base: Box<Expr>,
+        name: String,
+        index: usize,
+    },
+    Struct {
+        name: Vec<String>,
+        fields: Vec<(String, Expr)>,
+        id: usize,
     },
 }
-
-#[derive(Debug, Clone)]
-pub enum Statement<'src> {
+impl Expr {
+    fn new(kind: ExprKind, span: Span) -> Self {
+        {
+            let height = match &kind {
+                ExprKind::Unary(_, e) | ExprKind::Group(e) => e.height + 1,
+                ExprKind::Binary(_, a, b) | ExprKind::Index(a, b) => a.height.max(b.height) + 1,
+                ExprKind::Field { base, .. } => base.height + 1,
+                ExprKind::Call { args, .. } | ExprKind::Array(args) => {
+                    args.iter().map(|e| e.height).max().unwrap_or(0) + 1
+                }
+                ExprKind::Struct { fields, .. } => {
+                    fields.iter().map(|(_, e)| e.height).max().unwrap_or(0) + 1
+                }
+                _ => 1,
+            };
+            Self {
+                kind,
+                span,
+                ty: Type::Unknown,
+                height,
+            }
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Stmt {
+    pub kind: StmtKind,
+    pub span: Span,
+    pub terminates: bool,
+}
+#[derive(Clone, Debug, Serialize)]
+pub enum StmtKind {
     Let {
-        name: &'src str,
-        value: Expression<'src>,
-    },
-    Fn {
-        name: &'src str,
-        arguments: Vec<TypedVar<'src>>,
-        code: Block<'src>,
-    },
-    Ret {
-        value: Expression<'src>,
-    },
-    If {
-        condition: Expression<'src>,
-        then_branch: Block<'src>,
-        else_branch: Option<Block<'src>>,
-    },
-    Call {
-        name: &'src str,
-        arguments: Vec<Expression<'src>>,
-    },
-    While {
-        condition: Expression<'src>,
-        body: Block<'src>,
+        name: String,
+        annotation: Option<Type>,
+        value: Expr,
+        id: usize,
+        name_span: Span,
     },
     Assign {
-        name: &'src str,
-        value: Expression<'src>,
+        place: Expr,
+        value: Expr,
     },
-    InputInt {
-        name: &'src str,
+    Ret(Option<Expr>),
+    If {
+        condition: Expr,
+        yes: Vec<Stmt>,
+        no: Option<Vec<Stmt>>,
     },
-    InputFloat {
-        name: &'src str,
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
     },
-    OutputInt {
-        value: Expression<'src>,
-    },
-    OutputFloat {
-        value: Expression<'src>,
-    },
+    Break,
+    Continue,
+    Expr(Expr),
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Param {
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
+    pub id: usize,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Function {
+    pub name: String,
+    pub name_span: Span,
+    pub public: bool,
+    pub params: Vec<Param>,
+    pub result: Type,
+    pub body: Vec<Stmt>,
+    pub span: Span,
+    pub module: usize,
+    pub id: usize,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct StructDef {
+    pub name: String,
+    pub name_span: Span,
+    pub public: bool,
+    pub fields: Vec<Param>,
+    pub span: Span,
+    pub module: usize,
+    pub id: usize,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Import {
+    pub path: String,
+    pub alias: String,
+    pub span: Span,
+}
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Ast {
+    pub functions: Vec<Function>,
+    pub structs: Vec<StructDef>,
+    pub imports: Vec<Import>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Block<'src> {
-    pub statements: Vec<Statement<'src>>,
+pub fn parse(tokens: &[Token], file: usize, end: usize) -> Result<Ast> {
+    let tokens = tokens
+        .iter()
+        .filter(|t| !t.kind.trivia())
+        .cloned()
+        .collect();
+    Parser {
+        tokens,
+        pos: 0,
+        eof: Span {
+            file,
+            start: end,
+            end,
+        },
+        depth: 0,
+        allow_empty_struct: true,
+    }
+    .program()
 }
-
-#[derive(Debug, Clone)]
-pub struct TypedVar<'src> {
-    pub variables: (Type, &'src str),
+struct Parser {
+    tokens: Vec<Token>,
+    pos: usize,
+    eof: Span,
+    depth: usize,
+    allow_empty_struct: bool,
 }
-
-pub fn parser_expr<'src>()
--> impl Parser<'src, &'src [Token<'src>], Expression<'src>, extra::Err<Rich<'src, Token<'src>>>> + Clone
-{
-    recursive(|expr| {
-        let num_literals = select! {
-            Token::IntLiteral(n) => Expression::Int(n),
-            Token::FloatLiteral(n) => Expression::Float(n),
+impl Parser {
+    fn previous_span(&self) -> Span {
+        self.tokens
+            .get(self.pos.saturating_sub(1))
+            .map(|t| t.span)
+            .unwrap_or(self.eof)
+    }
+    fn span(&self) -> Span {
+        self.tokens
+            .get(self.pos)
+            .map(|t| t.span)
+            .unwrap_or(self.eof)
+    }
+    fn at(&self, k: &Kind) -> bool {
+        self.tokens
+            .get(self.pos)
+            .is_some_and(|t| std::mem::discriminant(&t.kind) == std::mem::discriminant(k))
+    }
+    fn take(&mut self, k: &Kind) -> bool {
+        if self.at(k) {
+            self.pos += 1;
+            true
+        } else {
+            false
+        }
+    }
+    fn expect(&mut self, k: &Kind) -> Result<Span> {
+        let span = self.span();
+        if self.take(k) {
+            return Ok(span);
+        }
+        let expected = match k {
+            Kind::LBrace => "'{'",
+            Kind::RBrace => "'}'",
+            Kind::LParen => "'('",
+            Kind::RParen => "')'",
+            Kind::LBracket => "'['",
+            Kind::RBracket => "']'",
+            Kind::Colon => "':'",
+            Kind::End => "'~'",
+            Kind::Assign => "'='",
+            Kind::As => "AS",
+            _ => "token",
         };
-
-        let ident = select! { Token::Identifier(s) => s };
-
-        let call = ident
-            .then(
-                expr.clone()
-                    .separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
-            )
-            .map(|(name, args)| Expression::Call {
+        let found = self
+            .tokens
+            .get(self.pos)
+            .map(|t| format!("{:?}", t.text.chars().take(80).collect::<String>()))
+            .unwrap_or_else(|| "end of input".into());
+        Err(self.error(format!("expected {expected}, found {found}")))
+    }
+    fn error(&self, msg: impl Into<String>) -> Diagnostic {
+        Diagnostic::error("E0100", msg, self.span())
+    }
+    fn ident(&mut self) -> Result<(String, Span)> {
+        let t = self
+            .tokens
+            .get(self.pos)
+            .cloned()
+            .ok_or_else(|| self.error("expected identifier"))?;
+        if let Kind::Ident(s) = t.kind {
+            self.pos += 1;
+            Ok((s, t.span))
+        } else {
+            Err(self.error("expected identifier"))
+        }
+    }
+    fn path(&mut self) -> Result<Vec<String>> {
+        let mut p = vec![self.ident()?.0];
+        while self.take(&Kind::Scope) {
+            p.push(self.ident()?.0);
+        }
+        Ok(p)
+    }
+    fn ty(&mut self) -> Result<Type> {
+        self.depth += 1;
+        if self.depth > 128 {
+            return Err(self.error("type nesting limit exceeded"));
+        }
+        let t = if self.take(&Kind::IntType) {
+            Type::Int
+        } else if self.take(&Kind::FloatType) {
+            Type::Float
+        } else if self.take(&Kind::BoolType) {
+            Type::Bool
+        } else if self.take(&Kind::StrType) {
+            Type::Str
+        } else if self.take(&Kind::UnitType) {
+            Type::Unit
+        } else if self.take(&Kind::LBracket) {
+            let t = self.ty()?;
+            self.expect(&Kind::RBracket)?;
+            Type::Array(Box::new(t))
+        } else {
+            Type::Named(self.path()?)
+        };
+        self.depth -= 1;
+        Ok(t)
+    }
+    fn program(&mut self) -> Result<Ast> {
+        let mut ast = Ast::default();
+        while self.pos < self.tokens.len() {
+            let start = self.span();
+            let public = self.take(&Kind::Pub);
+            if self.take(&Kind::Import) {
+                if public {
+                    return Err(self.error("imports cannot be PUB"));
+                }
+                let t = self
+                    .tokens
+                    .get(self.pos)
+                    .cloned()
+                    .ok_or_else(|| self.error("expected import path"))?;
+                let Kind::Str(raw) = t.kind else {
+                    return Err(self.error("expected quoted import path"));
+                };
+                self.pos += 1;
+                let path = decode(&raw, t.span)?;
+                self.expect(&Kind::As)?;
+                let alias = self.ident()?.0;
+                let end = self.expect(&Kind::End)?;
+                ast.imports.push(Import {
+                    path,
+                    alias,
+                    span: start.join(end),
+                });
+            } else if self.take(&Kind::Fn) {
+                let (name, name_span) = self.ident()?;
+                self.expect(&Kind::LParen)?;
+                let mut params = Vec::new();
+                while !self.at(&Kind::RParen) {
+                    let (name, span) = self.ident()?;
+                    self.expect(&Kind::Colon)?;
+                    let ty = self.ty()?;
+                    params.push(Param {
+                        name,
+                        ty,
+                        span,
+                        id: usize::MAX,
+                    });
+                    if !self.take(&Kind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(&Kind::RParen)?;
+                let result = if self.take(&Kind::Colon) {
+                    self.ty()?
+                } else {
+                    Type::Unit
+                };
+                let body = self.block()?;
+                ast.functions.push(Function {
+                    name,
+                    name_span,
+                    public,
+                    params,
+                    result,
+                    body,
+                    span: start.join(self.previous_span()),
+                    module: 0,
+                    id: usize::MAX,
+                });
+            } else if self.take(&Kind::Struct) {
+                let (name, name_span) = self.ident()?;
+                self.expect(&Kind::LBrace)?;
+                let mut fields = Vec::new();
+                while !self.at(&Kind::RBrace) {
+                    let (name, span) = self.ident()?;
+                    self.expect(&Kind::Colon)?;
+                    let ty = self.ty()?;
+                    fields.push(Param {
+                        name,
+                        ty,
+                        span,
+                        id: usize::MAX,
+                    });
+                    if !self.take(&Kind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(&Kind::RBrace)?;
+                ast.structs.push(StructDef {
+                    name,
+                    name_span,
+                    public,
+                    fields,
+                    span: start.join(self.previous_span()),
+                    module: 0,
+                    id: usize::MAX,
+                });
+            } else {
+                return Err(self.error("expected FN, ST or IM at module scope"));
+            }
+        }
+        Ok(ast)
+    }
+    fn block(&mut self) -> Result<Vec<Stmt>> {
+        self.depth += 1;
+        if self.depth > 128 {
+            return Err(self.error("block nesting limit exceeded"));
+        }
+        self.expect(&Kind::LBrace)?;
+        let mut body = Vec::new();
+        while !self.at(&Kind::RBrace) {
+            if self.pos >= self.tokens.len() {
+                return Err(self.error("expected closing brace"));
+            }
+            body.push(self.stmt()?);
+        }
+        self.expect(&Kind::RBrace)?;
+        self.depth -= 1;
+        Ok(body)
+    }
+    fn stmt(&mut self) -> Result<Stmt> {
+        let span = self.span();
+        let kind = if self.take(&Kind::Let) {
+            let (name, name_span) = self.ident()?;
+            let annotation = if self.take(&Kind::Colon) {
+                Some(self.ty()?)
+            } else {
+                None
+            };
+            self.expect(&Kind::Assign)?;
+            let value = self.expr(0)?;
+            self.expect(&Kind::End)?;
+            StmtKind::Let {
                 name,
-                arguments: args,
-            });
-
-        let literals = select! {
-            Token::BooleanTrue => Expression::Boolean(true),
-            Token::BooleanFalse => Expression::Boolean(false),
-            Token::StringLiteral(s) => Expression::String(s),
+                annotation,
+                value,
+                id: usize::MAX,
+                name_span,
+            }
+        } else if self.take(&Kind::Ret) {
+            let value = if self.at(&Kind::End) {
+                None
+            } else {
+                Some(self.expr(0)?)
+            };
+            self.expect(&Kind::End)?;
+            StmtKind::Ret(value)
+        } else if self.take(&Kind::If) {
+            let allow = self.allow_empty_struct;
+            self.allow_empty_struct = false;
+            let condition = self.expr(0)?;
+            self.allow_empty_struct = allow;
+            let yes = self.block()?;
+            let no = if self.take(&Kind::Else) {
+                Some(self.block()?)
+            } else {
+                None
+            };
+            StmtKind::If { condition, yes, no }
+        } else if self.take(&Kind::While) {
+            let allow = self.allow_empty_struct;
+            self.allow_empty_struct = false;
+            let condition = self.expr(0)?;
+            self.allow_empty_struct = allow;
+            let body = self.block()?;
+            StmtKind::While { condition, body }
+        } else if self.take(&Kind::Break) || self.take(&Kind::Brk) {
+            self.expect(&Kind::End)?;
+            StmtKind::Break
+        } else if self.take(&Kind::Continue) || self.take(&Kind::Cont) {
+            self.expect(&Kind::End)?;
+            StmtKind::Continue
+        } else if self.at(&Kind::InputInt)
+            || self.at(&Kind::InputFloat)
+            || self.at(&Kind::InputString)
+        {
+            let k = self.tokens[self.pos].kind.clone();
+            self.pos += 1;
+            let (name, s) = self.ident()?;
+            self.expect(&Kind::End)?;
+            let builtin = match k {
+                Kind::InputInt => "read_int",
+                Kind::InputFloat => "read_float",
+                _ => "read_line",
+            };
+            let value = Expr::new(
+                ExprKind::Call {
+                    name: vec![builtin.into()],
+                    args: vec![],
+                    target: None,
+                },
+                span,
+            );
+            StmtKind::Assign {
+                place: Expr::new(
+                    ExprKind::Var {
+                        name,
+                        id: usize::MAX,
+                    },
+                    s,
+                ),
+                value,
+            }
+        } else if self.at(&Kind::OutputInt)
+            || self.at(&Kind::OutputFloat)
+            || self.at(&Kind::OutputString)
+        {
+            let k = self.tokens[self.pos].kind.clone();
+            self.pos += 1;
+            let value = self.expr(0)?;
+            self.expect(&Kind::End)?;
+            let name = match k {
+                Kind::OutputInt => "output_int",
+                Kind::OutputFloat => "output_float",
+                _ => "output_str",
+            };
+            StmtKind::Expr(Expr::new(
+                ExprKind::Call {
+                    name: vec![name.into()],
+                    args: vec![value],
+                    target: None,
+                },
+                span,
+            ))
+        } else {
+            let place = self.expr(0)?;
+            if self.take(&Kind::Assign) {
+                let value = self.expr(0)?;
+                self.expect(&Kind::End)?;
+                StmtKind::Assign { place, value }
+            } else {
+                self.expect(&Kind::End)?;
+                StmtKind::Expr(place)
+            }
         };
-
-        let variable = ident.map(Expression::Identifier);
-
-        let parens = just(Token::LeftParen)
-            .ignore_then(expr.clone())
-            .then_ignore(just(Token::RightParen));
-
-        let atom = call.or(variable).or(literals).or(num_literals).or(parens);
-
-        let op_add = just(Token::Plus);
-        let op_sub = just(Token::Minus);
-        let op_mul = just(Token::Star);
-        let op_div = just(Token::Slash);
-        let op_mod = just(Token::Percent);
-        let op_eq = just(Token::Equal);
-        let op_nq = just(Token::NotEqual);
-        let op_ls = just(Token::Less);
-        let op_le = just(Token::LessEqual);
-        let op_gr = just(Token::Greater);
-        let op_ge = just(Token::GreaterEqual);
-
-        let op_min = just(Token::Minus);
-        let op_not = just(Token::LogicalNot);
-
-        atom.pratt((
-            prefix(4, op_min, |_, r, _| Expression::Neg { expr: Box::new(r) }),
-            prefix(4, op_not, |_, r, _| Expression::Not { expr: Box::new(r) }),
-            infix(left(1), op_eq, |l, _, r, _| Expression::Equal {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(1), op_nq, |l, _, r, _| Expression::NotEqual {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(1), op_ls, |l, _, r, _| Expression::Less {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(1), op_le, |l, _, r, _| Expression::LessEqual {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(1), op_gr, |l, _, r, _| Expression::Greater {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(1), op_ge, |l, _, r, _| Expression::GreaterEqual {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(2), op_add, |l, _, r, _| Expression::Add {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(2), op_sub, |l, _, r, _| Expression::Sub {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(3), op_mul, |l, _, r, _| Expression::Mul {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(3), op_div, |l, _, r, _| Expression::Div {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-            infix(left(3), op_mod, |l, _, r, _| Expression::Mod {
-                lho: Box::new(l),
-                rho: Box::new(r),
-            }),
-        ))
-    })
-    .boxed()
+        Ok(Stmt {
+            kind,
+            span: span.join(self.previous_span()),
+            terminates: false,
+        })
+    }
+    fn expr(&mut self, min: u8) -> Result<Expr> {
+        self.depth += 1;
+        if self.depth > 128 {
+            return Err(self.error("expression nesting limit exceeded"));
+        }
+        let mut lhs = self.atom()?;
+        let mut operations = 0;
+        loop {
+            operations += 1;
+            if operations > 256 {
+                return Err(self.error("expression complexity limit exceeded"));
+            }
+            if self.take(&Kind::LBracket) {
+                let idx = self.expr(0)?;
+                let end = self.expect(&Kind::RBracket)?;
+                let span = lhs.span.join(end);
+                lhs = Expr::new(ExprKind::Index(Box::new(lhs), Box::new(idx)), span);
+                continue;
+            }
+            if self.take(&Kind::Dot) {
+                let (name, end) = self.ident()?;
+                let span = lhs.span.join(end);
+                lhs = Expr::new(
+                    ExprKind::Field {
+                        base: Box::new(lhs),
+                        name,
+                        index: usize::MAX,
+                    },
+                    span,
+                );
+                continue;
+            }
+            let op = match self.tokens.get(self.pos).map(|t| &t.kind) {
+                Some(Kind::Plus) => Op::Add,
+                Some(Kind::Minus) => Op::Sub,
+                Some(Kind::Star) => Op::Mul,
+                Some(Kind::Slash) => Op::Div,
+                Some(Kind::Percent) => Op::Mod,
+                Some(Kind::Eq) => Op::Eq,
+                Some(Kind::Ne) => Op::Ne,
+                Some(Kind::Lt) => Op::Lt,
+                Some(Kind::Le) => Op::Le,
+                Some(Kind::Gt) => Op::Gt,
+                Some(Kind::Ge) => Op::Ge,
+                Some(Kind::And) => Op::And,
+                Some(Kind::Or) => Op::Or,
+                _ => break,
+            };
+            let prec = match op {
+                Op::Or => 1,
+                Op::And => 2,
+                Op::Eq | Op::Ne => 3,
+                Op::Lt | Op::Le | Op::Gt | Op::Ge => 4,
+                Op::Add | Op::Sub => 5,
+                _ => 6,
+            };
+            if prec < min {
+                break;
+            }
+            self.pos += 1;
+            let rhs = self.expr(prec + 1)?;
+            if op.comparison()
+                && [&lhs, &rhs]
+                    .iter()
+                    .any(|e| matches!(&e.kind,ExprKind::Binary(o,_,_) if o.comparison()))
+            {
+                return Err(Diagnostic::error(
+                    "E0101",
+                    "comparison chains require explicit parentheses",
+                    lhs.span.join(rhs.span),
+                ));
+            }
+            let span = lhs.span.join(rhs.span);
+            lhs = Expr::new(ExprKind::Binary(op, Box::new(lhs), Box::new(rhs)), span);
+        }
+        self.depth -= 1;
+        if lhs.height > 128 {
+            return Err(self.error("expression tree nesting limit exceeded"));
+        }
+        Ok(lhs)
+    }
+    fn atom(&mut self) -> Result<Expr> {
+        let token = self
+            .tokens
+            .get(self.pos)
+            .cloned()
+            .ok_or_else(|| self.error("expected expression"))?;
+        let span = token.span;
+        self.pos += 1;
+        let kind = match token.kind {
+            Kind::Int(s) => ExprKind::Int(s.parse().map_err(|_| {
+                Diagnostic::error("E0102", "integer literal is outside int range", span)
+            })?),
+            Kind::Float(s) => {
+                let f: f64 = s.parse().map_err(|_| self.error("invalid float literal"))?;
+                if !f.is_finite() {
+                    return Err(Diagnostic::error(
+                        "E0102",
+                        "float literal is not finite",
+                        span,
+                    ));
+                }
+                ExprKind::Float(f)
+            }
+            Kind::Str(s) => ExprKind::Str(decode(&s, span)?),
+            Kind::True => ExprKind::Bool(true),
+            Kind::False => ExprKind::Bool(false),
+            Kind::Minus => {
+                if let Some(Token {
+                    kind: Kind::Int(s),
+                    span: end,
+                    ..
+                }) = self.tokens.get(self.pos)
+                    && s.parse::<u64>() == Ok(1_u64 << 63)
+                {
+                    let end = *end;
+                    self.pos += 1;
+                    return Ok(Expr::new(ExprKind::Int(i64::MIN), span.join(end)));
+                }
+                ExprKind::Unary(Op::Neg, Box::new(self.expr(7)?))
+            }
+            Kind::Not => ExprKind::Unary(Op::Not, Box::new(self.expr(7)?)),
+            Kind::LParen => {
+                let allow = self.allow_empty_struct;
+                self.allow_empty_struct = true;
+                let e = self.expr(0)?;
+                self.allow_empty_struct = allow;
+                let end = self.expect(&Kind::RParen)?;
+                return Ok(Expr::new(ExprKind::Group(Box::new(e)), span.join(end)));
+            }
+            Kind::LBracket => {
+                let mut values = Vec::new();
+                while !self.at(&Kind::RBracket) {
+                    values.push(self.expr(0)?);
+                    if !self.take(&Kind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(&Kind::RBracket)?;
+                ExprKind::Array(values)
+            }
+            Kind::Ident(s) => return self.named(vec![s], span),
+            Kind::IntType => return self.named(vec!["int".into()], span),
+            Kind::FloatType => return self.named(vec!["float".into()], span),
+            Kind::StrType => return self.named(vec!["str".into()], span),
+            _ => return Err(Diagnostic::error("E0100", "expected expression", span)),
+        };
+        let end = self
+            .tokens
+            .get(self.pos.saturating_sub(1))
+            .map(|t| t.span)
+            .unwrap_or(span);
+        Ok(Expr::new(kind, span.join(end)))
+    }
+    fn named(&mut self, mut name: Vec<String>, span: Span) -> Result<Expr> {
+        while self.take(&Kind::Scope) {
+            name.push(self.ident()?.0);
+        }
+        let kind = if self.take(&Kind::LParen) {
+            let allow = self.allow_empty_struct;
+            self.allow_empty_struct = true;
+            let mut args = Vec::new();
+            while !self.at(&Kind::RParen) {
+                args.push(self.expr(0)?);
+                if !self.take(&Kind::Comma) {
+                    break;
+                }
+            }
+            self.expect(&Kind::RParen)?;
+            self.allow_empty_struct = allow;
+            ExprKind::Call {
+                name,
+                args,
+                target: None,
+            }
+        } else if self.at(&Kind::LBrace)
+            && ((self
+                .tokens
+                .get(self.pos + 1)
+                .is_some_and(|t| matches!(t.kind, Kind::Ident(_)))
+                && self
+                    .tokens
+                    .get(self.pos + 2)
+                    .is_some_and(|t| t.kind == Kind::Colon))
+                || (self.allow_empty_struct
+                    && self
+                        .tokens
+                        .get(self.pos + 1)
+                        .is_some_and(|t| t.kind == Kind::RBrace)))
+        {
+            self.pos += 1;
+            let mut fields = Vec::new();
+            while !self.at(&Kind::RBrace) {
+                let key = self.ident()?.0;
+                self.expect(&Kind::Colon)?;
+                fields.push((key, self.expr(0)?));
+                if !self.take(&Kind::Comma) {
+                    break;
+                }
+            }
+            self.expect(&Kind::RBrace)?;
+            ExprKind::Struct {
+                name,
+                fields,
+                id: usize::MAX,
+            }
+        } else {
+            if name.len() != 1 {
+                return Err(Diagnostic::error(
+                    "E0100",
+                    "qualified name must be called",
+                    span,
+                ));
+            }
+            ExprKind::Var {
+                name: name.remove(0),
+                id: usize::MAX,
+            }
+        };
+        let end = self
+            .tokens
+            .get(self.pos.saturating_sub(1))
+            .map(|t| t.span)
+            .unwrap_or(span);
+        Ok(Expr::new(kind, span.join(end)))
+    }
 }
-
-pub fn parser_stmt<'src>()
--> impl Parser<'src, &'src [Token<'src>], Statement<'src>, extra::Err<Rich<'src, Token<'src>>>> {
-    recursive(|stmt_parser| {
-        let type_parser = select! {
-            Token::TypeInt => Type::Int,
-            Token::TypeFloat => Type::Float,
-            Token::TypeBool => Type::Boolean,
-            Token::TypeString => Type::String,
-        };
-
-        let ident_parser = select! {
-            Token::Identifier(s) => s,
-        };
-
-        let typed_var = ident_parser
-            .then_ignore(just(Token::Colon))
-            .then(type_parser)
-            .map(|(name, typ)| TypedVar {
-                variables: (typ, name),
-            });
-
-        let block = just(Token::LeftBrace)
-            .ignore_then(stmt_parser.clone().repeated().collect::<Vec<_>>())
-            .then_ignore(just(Token::RightBrace))
-            .map(|statements| Block { statements });
-
-        let stmt_let = just(Token::KeywordLet)
-            .ignore_then(ident_parser)
-            .then_ignore(just(Token::Colon))
-            .then(type_parser)
-            .then_ignore(just(Token::Assign))
-            .then(parser_expr().boxed())
-            .then_ignore(just(Token::Tilda))
-            .map(|((name, _typ), expr)| Statement::Let { name, value: expr });
-
-        let stmt_fn = just(Token::KeywordFn)
-            .ignore_then(ident_parser)
-            .then_ignore(just(Token::LeftParen))
-            .then(
-                typed_var
-                    .separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>(),
-            )
-            .then_ignore(just(Token::RightParen))
-            .then(block.clone())
-            .map(|((name, arguments), code)| Statement::Fn {
-                name,
-                arguments,
-                code,
-            });
-
-        let stmt_ret = just(Token::KeywordReturn)
-            .ignore_then(parser_expr().boxed())
-            .then_ignore(just(Token::Tilda))
-            .map(|value| Statement::Ret { value });
-
-        let stmt_if = just(Token::KeywordIf)
-            .ignore_then(parser_expr().boxed())
-            .then(block.clone())
-            .then_ignore(just(Token::KeywordElse).or_not())
-            .then(block.clone().or_not())
-            .map(|((condition, then_branch), else_branch)| Statement::If {
-                condition,
-                then_branch,
-                else_branch,
-            });
-
-        let stmt_call = ident_parser
-            .then_ignore(just(Token::LeftParen))
-            .then(
-                parser_expr()
-                    .separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>(),
-            )
-            .then_ignore(just(Token::RightParen))
-            .then_ignore(just(Token::Tilda))
-            .map(|(name, args)| Statement::Call {
-                name,
-                arguments: args,
-            });
-
-        let stmt_while = just(Token::KeywordWhile)
-            .ignore_then(parser_expr().boxed())
-            .then(block.clone())
-            .map(|(condition, body)| Statement::While { condition, body });
-
-        let stmt_assign = ident_parser
-            .then_ignore(just(Token::Assign))
-            .then(parser_expr().boxed())
-            .then_ignore(just(Token::Tilda))
-            .map(|(name, expr)| Statement::Assign { name, value: expr });
-
-        let stmt_input_int = just(Token::KeywordInputInt)
-            .ignore_then(ident_parser)
-            .then_ignore(just(Token::Tilda))
-            .map(|name| Statement::InputInt { name });
-
-        let stmt_input_float = just(Token::KeywordInputFloat)
-            .ignore_then(ident_parser)
-            .then_ignore(just(Token::Tilda))
-            .map(|name| Statement::InputFloat { name });
-
-        let stmt_output_int = just(Token::KeywordOutputInt)
-            .ignore_then(parser_expr().boxed())
-            .then_ignore(just(Token::Tilda))
-            .map(|value| Statement::OutputInt { value });
-
-        let stmt_output_float = just(Token::KeywordOutputFloat)
-            .ignore_then(parser_expr().boxed())
-            .then_ignore(just(Token::Tilda))
-            .map(|value| Statement::OutputFloat { value });
-
-        choice((
-            stmt_let,
-            stmt_fn,
-            stmt_ret,
-            stmt_if,
-            stmt_call,
-            stmt_while,
-            stmt_assign,
-            stmt_input_int,
-            stmt_input_float,
-            stmt_output_int,
-            stmt_output_float,
-        ))
-    })
+fn decode(raw: &str, span: Span) -> Result<String> {
+    let mut out = String::new();
+    let mut chars = raw[1..raw.len() - 1].chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let escape = chars
+            .next()
+            .ok_or_else(|| Diagnostic::error("E0103", "unterminated escape", span))?;
+        out.push(match escape {
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            '0' => '\0',
+            '"' => '"',
+            '\\' => '\\',
+            'u' => {
+                if chars.next() != Some('{') {
+                    return Err(Diagnostic::error(
+                        "E0103",
+                        "use \\u{hex} for Unicode escapes",
+                        span,
+                    ));
+                }
+                let mut hex = String::new();
+                let mut closed = false;
+                for c in chars.by_ref() {
+                    if c == '}' {
+                        closed = true;
+                        break;
+                    }
+                    hex.push(c);
+                    if hex.len() > 6 {
+                        break;
+                    }
+                }
+                if !closed {
+                    return Err(Diagnostic::error("E0103", "invalid Unicode escape", span));
+                }
+                u32::from_str_radix(&hex, 16)
+                    .ok()
+                    .and_then(char::from_u32)
+                    .ok_or_else(|| Diagnostic::error("E0103", "invalid Unicode scalar", span))?
+            }
+            _ => {
+                return Err(Diagnostic::error(
+                    "E0103",
+                    format!("unknown escape \\{escape}"),
+                    span,
+                ));
+            }
+        });
+    }
+    Ok(out)
 }

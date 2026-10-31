@@ -1,0 +1,125 @@
+// Mailbox board: white pieces are positive, black negative; 99 is the border.
+// Piece codes: pawn=1, knight=2, bishop=3, rook=4, queen=5, king=6.
+PUB ST Position {
+  cells: [int], turn: int, castle: [bool], ep: int,
+  halfmove: int, fullmove: int, white_king: int, black_king: int
+}
+
+PUB ST Move { from: int, to: int, promotion: int, flag: int }
+
+PUB FN square(file: int, rank: int): int { RET (rank + 1) * 10 + file~ }
+
+PUB FN empty(): Position {
+  LT cells: [int] = []~
+  LT i = 0~
+  WH i < 120 {
+    LT value = 99~
+    IF (i / 10 >= 2) && (i / 10 <= 9) && (i % 10 >= 1) && (i % 10 <= 8) {
+      value = 0~
+    }
+    cells = push(cells, value)~
+    i = i + 1~
+  }
+  RET Position { cells: cells, turn: 1, castle: [false, false, false, false],
+    ep: 0, halfmove: 0, fullmove: 1, white_king: 25, black_king: 95 }~
+}
+
+PUB FN initial(): Position {
+  LT p = empty()~
+  LT back: [int] = [4, 2, 3, 5, 6, 3, 2, 4]~
+  LT f = 1~
+  WH f <= 8 {
+    p.cells[square(f, 1)] = back[f - 1]~
+    p.cells[square(f, 2)] = 1~
+    p.cells[square(f, 7)] = -1~
+    p.cells[square(f, 8)] = -back[f - 1]~
+    f = f + 1~
+  }
+  p.castle = [true, true, true, true]~
+  RET p~
+}
+
+PUB FN from_rows(rows: [[int]], turn: int, rights: [bool], ep: int): Position {
+  LT p = empty()~
+  p.turn = turn~
+  p.castle = rights~
+  p.ep = ep~
+  LT r = 0~
+  WH r < 8 {
+    LT f = 0~
+    WH f < 8 {
+      LT s = square(f + 1, 8 - r)~
+      LT piece = rows[r][f]~
+      p.cells[s] = piece~
+      IF piece == 6 { p.white_king = s~ }
+      IF piece == -6 { p.black_king = s~ }
+      f = f + 1~
+    }
+    r = r + 1~
+  }
+  RET p~
+}
+
+PUB FN king(p: Position, side: int): int {
+  IF side == 1 { RET p.white_king~ }
+  RET p.black_king~
+}
+
+PUB FN move(from: int, to: int, promotion: int, flag: int): Move {
+  RET Move { from: from, to: to, promotion: promotion, flag: flag }~
+}
+
+PUB FN name(s: int): str {
+  LT files: [str] = ["a", "b", "c", "d", "e", "f", "g", "h"]~
+  RET files[s % 10 - 1] + str(s / 10 - 1)~
+}
+
+PUB FN notation(m: Move): str {
+  LT suffix = ""~
+  LT names: [str] = ["", "", "n", "b", "r", "q"]~
+  IF m.promotion != 0 { suffix = names[m.promotion]~ }
+  RET name(m.from) + name(m.to) + suffix~
+}
+
+PUB FN material(piece: int): int {
+  LT kind = abs(piece)~
+  IF kind == 1 { RET 100~ }
+  IF kind == 2 { RET 320~ }
+  IF kind == 3 { RET 330~ }
+  IF kind == 4 { RET 500~ }
+  IF kind == 5 { RET 900~ }
+  IF kind == 6 { RET 20000~ }
+  RET 0~
+}
+
+// The caller supplies a legal move; legality lives in moves.plr.
+PUB FN play(p: Position, m: Move): Position {
+  LT piece = p.cells[m.from]~
+  LT captured = p.cells[m.to]~
+  p.halfmove = p.halfmove + 1~
+  IF (abs(piece) == 1) || (captured != 0) { p.halfmove = 0~ }
+  p.cells[m.from] = 0~
+  p.cells[m.to] = piece~
+  IF m.promotion != 0 { p.cells[m.to] = m.promotion * p.turn~ }
+  IF m.flag == 1 { p.cells[m.to - p.turn * 10] = 0~ }
+  IF m.flag == 2 {
+    LT rook_from = m.from - 4~
+    LT rook_to = m.from - 1~
+    IF m.to > m.from { rook_from = m.from + 3~ rook_to = m.from + 1~ }
+    p.cells[rook_from] = 0~
+    p.cells[rook_to] = 4 * p.turn~
+  }
+  IF piece == 6 { p.white_king = m.to~ p.castle[0] = false~ p.castle[1] = false~ }
+  IF piece == -6 { p.black_king = m.to~ p.castle[2] = false~ p.castle[3] = false~ }
+  IF (m.from == 28) || (m.to == 28) { p.castle[0] = false~ }
+  IF (m.from == 21) || (m.to == 21) { p.castle[1] = false~ }
+  IF (m.from == 98) || (m.to == 98) { p.castle[2] = false~ }
+  IF (m.from == 91) || (m.to == 91) { p.castle[3] = false~ }
+  p.ep = 0~
+  IF (abs(piece) == 1) && (abs(m.to - m.from) == 20) {
+    p.ep = (m.to + m.from) / 2~
+  }
+  IF p.turn == -1 { p.fullmove = p.fullmove + 1~ }
+  p.turn = -p.turn~
+  RET p~
+}

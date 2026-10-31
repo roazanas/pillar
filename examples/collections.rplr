@@ -1,0 +1,18 @@
+ST Person
+{
+  age: int,
+  names: [str]
+}
+
+FN main(): int
+{
+  LT original: Person = Person { age: 25, names: ["Ada"] }~
+  LT changed: Person = original~
+  changed.age = 26~
+  changed.names[0] = "Grace"~
+  println(original.names[0])~
+  println(changed.names[0])~
+  OUTI original.age~
+  OUTI changed.age~
+  RET 0~
+}

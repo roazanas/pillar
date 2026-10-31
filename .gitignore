@@ -1,6 +1,13 @@
 /target
 out
+/out.o
+/out.exe
+/hello
+/pillar-chess.txt
 complex
 fact
 fib
 mult
+node_modules/
+__pycache__/
+*.vsix

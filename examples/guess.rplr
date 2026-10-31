@@ -1,0 +1,25 @@
+FN main(): int
+{
+  println("Guess a number from 1 to 10:")~
+  LT attempts: int = 0~
+  WH attempts < 5
+  {
+    LT guess: int = read_int()~
+    attempts = attempts + 1~
+    IF guess == 7
+    {
+      println("Correct!")~
+      RET 0~
+    }
+    IF guess < 7
+    {
+      println("Try a larger number.")~
+    }
+    EL
+    {
+      println("Try a smaller number.")~
+    }
+  }
+  println("The number was 7.")~
+  RET 1~
+}
