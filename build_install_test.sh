@@ -1,1 +1,4 @@
-cargo install --path . && plrc -t test.rplr > test.plr && plrc -v test.plr && ./out
+#!/bin/sh
+set -eu
+cargo build --locked --bin plrc
+cargo test --all-targets --locked

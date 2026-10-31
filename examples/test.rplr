@@ -1,0 +1,13 @@
+FN print(x: int)
+{
+  OUTI x~
+}
+
+FN main(): int
+{
+  LT x: int = 5~
+  print(x)~
+  
+  RET 0~
+}
+

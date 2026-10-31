@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pillar playground</title><link rel="stylesheet" href="/style.css"><script src="/columns.js" defer></script><script src="/app.js" defer></script></head>
+<body>
+<a class="skip" href="#source">Skip to source</a>
+<header><div><span class="eyebrow">A different angle on code</span><h1>Pillar playground</h1><p>Edit down a column. Read the same program across.</p></div><span class="badge">Local workspace</span></header>
+<main>
+  <section class="toolbar" aria-label="Program actions">
+    <button id="run" class="primary">Run program</button><button id="check">Check code</button><button id="format">Format code</button>
+    <label for="example">Load example <select id="example"><option value="hello">Hello, Pillar</option><option value="array">Arrays and values</option><option value="input">Read a number</option></select></label>
+    <button id="download">Download .plr</button>
+  </section>
+  <div class="editors">
+    <section><div class="section-heading"><label for="source">Vertical source <span>.plr</span></label><label class="toggle"><input id="downward" type="checkbox" checked> Insert downward</label></div>
+      <p id="source-help" class="hint">With downward insertion on, typing and pasting shift only the current column. Enter starts a new column; Tab moves focus.</p>
+      <textarea id="source" aria-describedby="source-help source-error" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+      <p id="source-error" class="error"></p>
+      <div class="column-actions" aria-label="Column actions"><button id="undo">Undo</button><button id="redo">Redo</button><button id="insert">Insert column</button><button id="remove">Remove column</button><button id="left">Move left</button><button id="right">Move right</button></div>
+    </section>
+    <section><div class="section-heading"><label for="preview">Horizontal preview <span>.rplr</span></label><button id="import">Import horizontal code</button></div>
+      <p class="hint">This view follows your source. Import horizontal code to create a vertical program.</p>
+      <textarea id="preview" readonly spellcheck="false" wrap="off"></textarea>
+    </section>
+  </div>
+  <div class="results"><section><label for="stdin">Program input</label><p class="hint" id="input-help">Provide input before running. Maximum 16 KiB.</p><textarea id="stdin" aria-describedby="input-help" rows="4" placeholder="For example: 42"></textarea></section>
+    <section><h2>Output</h2><p id="status" role="status">Ready to edit.</p><pre id="output" tabindex="0" aria-label="Program output">Run a program to see its output.</pre></section></div>
+  <details><summary>Import horizontal code</summary><label for="horizontal">Horizontal source</label><textarea id="horizontal" rows="7" spellcheck="false" placeholder="FN main(): int { RET 0~ }"></textarea><button id="apply-import">Replace vertical source</button></details>
+  <p class="hint">Source limit: 64 KiB. Programs run with a 2-second time limit; output is capped at 64 KiB per stream.</p>
+</main>
+</body></html>

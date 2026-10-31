@@ -1,0 +1,167 @@
+IM "position.plr" AS pos~
+IM "moves.plr" AS rules~
+
+PUB ST Result { score: int, pv: [pos::Move], nodes: int, completed: bool }
+
+// Material, activity, pawn advancement, doubled pawns and bishop pairs.
+PUB FN evaluate(p: pos::Position): int {
+  LT score = 0~
+  LT white_pawns: [int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]~
+  LT black_pawns: [int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]~
+  LT white_bishops = 0~
+  LT black_bishops = 0~
+  LT nonpawn_material = 0~
+  LT s = 21~
+  WH s <= 98 {
+    LT piece = p.cells[s]~
+    IF (piece != 0) && (piece != 99) {
+      LT side = 1~
+      IF piece < 0 { side = -1~ }
+      LT kind = abs(piece)~
+      LT f = s % 10~
+      LT r = s / 10 - 1~
+      LT center = 14 - abs(2 * f - 9) - abs(2 * r - 9)~
+      LT value = pos::material(piece)~
+      IF kind == 1 {
+        LT advance = r - 2~
+        IF side == -1 { advance = 7 - r~ }
+        value = value + advance * 8 + center~
+        IF side == 1 { white_pawns[f] = white_pawns[f] + 1~ }
+        EL { black_pawns[f] = black_pawns[f] + 1~ }
+      }
+      IF kind == 2 { value = value + center * 5~ }
+      IF kind == 3 {
+        value = value + center * 3~
+        IF side == 1 { white_bishops = white_bishops + 1~ }
+        EL { black_bishops = black_bishops + 1~ }
+      }
+      IF kind == 5 { value = value + center~ }
+      IF (kind > 1) && (kind < 6) { nonpawn_material = nonpawn_material + pos::material(piece)~ }
+      score = score + side * value~
+    }
+    s = s + 1~
+  }
+  LT f = 1~
+  WH f <= 8 {
+    IF white_pawns[f] > 1 { score = score - (white_pawns[f] - 1) * 18~ }
+    IF black_pawns[f] > 1 { score = score + (black_pawns[f] - 1) * 18~ }
+    f = f + 1~
+  }
+  IF white_bishops >= 2 { score = score + 30~ }
+  IF black_bishops >= 2 { score = score - 30~ }
+  LT wc = 14 - abs(2 * (p.white_king % 10) - 9) - abs(2 * (p.white_king / 10 - 1) - 9)~
+  LT bc = 14 - abs(2 * (p.black_king % 10) - 9) - abs(2 * (p.black_king / 10 - 1) - 9)~
+  IF nonpawn_material < 2600 { score = score + 4 * (wc - bc)~ }
+  EL { score = score - 3 * (wc - bc)~ }
+  RET score * p.turn~
+}
+
+FN priority(p: pos::Position, m: pos::Move): int {
+  LT value = 0~
+  IF p.cells[m.to] != 0 {
+    value = 10000 + 10 * pos::material(p.cells[m.to]) - pos::material(p.cells[m.from])~
+  }
+  IF m.flag == 1 { value = 10900~ }
+  IF m.flag == 2 { value = value + 40~ }
+  IF m.promotion != 0 { value = value + 15000 + pos::material(m.promotion)~ }
+  RET value~
+}
+
+FN ordered(p: pos::Position, list: [pos::Move]): [pos::Move] {
+  LT weights: [int] = []~
+  LT i = 0~
+  WH i < len(list) { weights = push(weights, priority(p, list[i]))~ i = i + 1~ }
+  i = 0~
+  WH i < len(list) {
+    LT best = i~
+    LT j = i + 1~
+    WH j < len(list) { IF weights[j] > weights[best] { best = j~ } j = j + 1~ }
+    IF best != i {
+      LT m = list[i]~ list[i] = list[best]~ list[best] = m~
+      LT w = weights[i]~ weights[i] = weights[best]~ weights[best] = w~
+    }
+    i = i + 1~
+  }
+  RET list~
+}
+
+// Negamax with fail-soft alpha-beta; depth <= 0 enters bounded quiescence.
+// Checked nodes search all evasions instead of treating check as a quiet leaf.
+FN negamax(p: pos::Position, depth: int, alpha: int, beta: int, ply: int, budget: int): Result {
+  LT pv: [pos::Move] = []~
+  IF budget <= 0 { RET Result { score: evaluate(p), pv: pv, nodes: 0, completed: false }~ }
+  LT list = rules::legal(p)~
+  LT checked = rules::in_check(p)~
+  IF len(list) == 0 {
+    LT score = 0~
+    IF checked { score = -30000 + ply~ }
+    RET Result { score: score, pv: pv, nodes: 1, completed: true }~
+  }
+  IF rules::dead_material(p) || (p.halfmove >= 150) {
+    RET Result { score: 0, pv: pv, nodes: 1, completed: true }~
+  }
+  LT best = -32000~
+  IF (depth <= 0) && !checked {
+    best = evaluate(p)~
+    IF best >= beta { RET Result { score: best, pv: pv, nodes: 1, completed: true }~ }
+    IF best > alpha { alpha = best~ }
+  }
+  IF depth <= -4 { RET Result { score: evaluate(p), pv: pv, nodes: 1, completed: true }~ }
+  list = ordered(p, list)~
+  LT nodes = 1~
+  LT i = 0~
+  WH i < len(list) {
+    LT m = list[i]~
+    IF (depth <= 0) && !checked && (p.cells[m.to] == 0) && (m.flag != 1) && (m.promotion == 0) {
+      i = i + 1~ continue~
+    }
+    LT child = negamax(pos::play(p, m), depth - 1, -beta, -alpha, ply + 1, budget - nodes)~
+    nodes = nodes + child.nodes~
+    IF !child.completed { RET Result { score: best, pv: pv, nodes: nodes, completed: false }~ }
+    LT score = -child.score~
+    IF score > best {
+      best = score~
+      pv = [m]~
+      LT j = 0~
+      WH j < len(child.pv) { pv = push(pv, child.pv[j])~ j = j + 1~ }
+    }
+    IF score > alpha { alpha = score~ }
+    IF alpha >= beta { break~ }
+    i = i + 1~
+  }
+  RET Result { score: best, pv: pv, nodes: nodes, completed: true }~
+}
+
+PUB FN line(pv: [pos::Move]): str {
+  LT text = ""~
+  LT i = 0~
+  WH i < len(pv) {
+    IF i > 0 { text = text + " "~ }
+    text = text + pos::notation(pv[i])~
+    i = i + 1~
+  }
+  RET text~
+}
+
+// An unfinished iteration never replaces the last fully searched result.
+PUB FN think(p: pos::Position, max_depth: int, budget: int, verbose: bool): Result {
+  LT legal = rules::legal(p)~
+  LT fallback: [pos::Move] = []~
+  IF len(legal) > 0 { fallback = [legal[0]]~ }
+  LT best = Result { score: evaluate(p), pv: fallback, nodes: 0, completed: false }~
+  LT used = 0~
+  LT depth = 1~
+  WH depth <= max_depth {
+    LT found = negamax(p, depth, -32000, 32000, 0, budget - used)~
+    used = used + found.nodes~
+    IF !found.completed { break~ }
+    best = found~
+    IF verbose {
+      println("depth " + str(depth) + " nodes " + str(used) + " score " + str(best.score) + " pv " + line(best.pv))~
+    }
+    IF (abs(best.score) > 29000) || (len(best.pv) == 0) { break~ }
+    depth = depth + 1~
+  }
+  best.nodes = used~
+  RET best~
+}

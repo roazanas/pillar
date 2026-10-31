@@ -1,0 +1,183 @@
+IM "position.plr" AS pos~
+
+// Attacks are geometric: a pinned enemy piece still attacks a king's square.
+PUB FN attacked(p: pos::Position, target: int, side: int): bool {
+  IF (p.cells[target - side * 10 - 1] == side) ||
+     (p.cells[target - side * 10 + 1] == side) { RET true~ }
+  LT jumps: [int] = [-21, -19, -12, -8, 8, 12, 19, 21]~
+  LT i = 0~
+  WH i < 8 {
+    IF p.cells[target + jumps[i]] == side * 2 { RET true~ }
+    i = i + 1~
+  }
+  LT rays: [int] = [-11, -10, -9, -1, 1, 9, 10, 11]~
+  i = 0~
+  WH i < 8 {
+    LT s = target + rays[i]~
+    LT step = 1~
+    WH p.cells[s] != 99 {
+      LT piece = p.cells[s]~
+      IF piece != 0 {
+        IF piece * side > 0 {
+          LT k = abs(piece)~
+          IF (k == 5) || ((k == 6) && (step == 1)) { RET true~ }
+          LT diagonal = (abs(rays[i]) == 9) || (abs(rays[i]) == 11)~
+          IF (diagonal && (k == 3)) || (!diagonal && (k == 4)) { RET true~ }
+        }
+        break~
+      }
+      step = step + 1~
+      s = s + rays[i]~
+    }
+    i = i + 1~
+  }
+  RET false~
+}
+
+PUB FN in_check(p: pos::Position): bool {
+  RET attacked(p, pos::king(p, p.turn), -p.turn)~
+}
+
+FN pawn_move(list: [pos::Move], from: int, to: int, flag: int): [pos::Move] {
+  IF (to / 10 == 2) || (to / 10 == 9) {
+    LT kind = 2~
+    WH kind <= 5 { list = push(list, pos::move(from, to, kind, flag))~ kind = kind + 1~ }
+  } EL { list = push(list, pos::move(from, to, 0, flag))~ }
+  RET list~
+}
+
+FN candidates(p: pos::Position): [pos::Move] {
+  LT list: [pos::Move] = []~
+  LT s = 21~
+  WH s <= 98 {
+    LT piece = p.cells[s]~
+    IF (piece == 99) || (piece * p.turn <= 0) { s = s + 1~ continue~ }
+    LT kind = abs(piece)~
+    IF kind == 1 {
+      LT next = s + p.turn * 10~
+      IF p.cells[next] == 0 {
+        list = pawn_move(list, s, next, 0)~
+        LT home = 3~
+        IF p.turn == -1 { home = 8~ }
+        IF (s / 10 == home) && (p.cells[next + p.turn * 10] == 0) {
+          list = push(list, pos::move(s, next + p.turn * 10, 0, 0))~
+        }
+      }
+      LT delta = -1~
+      WH delta <= 1 {
+        LT to = next + delta~
+        LT victim = p.cells[to]~
+        IF (victim != 99) && (victim * p.turn < 0) && (abs(victim) != 6) {
+          list = pawn_move(list, s, to, 0)~
+        }
+        IF (to == p.ep) && (victim == 0) && (p.cells[to - p.turn * 10] == -p.turn) {
+          list = push(list, pos::move(s, to, 0, 1))~
+        }
+        delta = delta + 2~
+      }
+    } EL {
+      LT directions: [int] = [-11, -10, -9, -1, 1, 9, 10, 11]~
+      IF kind == 2 { directions = [-21, -19, -12, -8, 8, 12, 19, 21]~ }
+      LT i = 0~
+      WH i < len(directions) {
+        LT d = directions[i]~
+        LT diagonal = (abs(d) == 9) || (abs(d) == 11)~
+        LT use = true~
+        IF (kind == 3) && !diagonal { use = false~ }
+        IF (kind == 4) && diagonal { use = false~ }
+        IF use {
+          LT to = s + d~
+          WH p.cells[to] != 99 {
+            LT victim = p.cells[to]~
+            IF (victim * p.turn > 0) || (abs(victim) == 6) { break~ }
+            list = push(list, pos::move(s, to, 0, 0))~
+            IF (victim != 0) || (kind == 2) || (kind == 6) { break~ }
+            to = to + d~
+          }
+        }
+        i = i + 1~
+      }
+    }
+    s = s + 1~
+  }
+  LT home = 25~
+  LT right = 0~
+  IF p.turn == -1 { home = 95~ right = 2~ }
+  IF (p.cells[home] == p.turn * 6) && !attacked(p, home, -p.turn) {
+    IF p.castle[right] && (p.cells[home + 3] == p.turn * 4) &&
+       (p.cells[home + 1] == 0) && (p.cells[home + 2] == 0) &&
+       !attacked(p, home + 1, -p.turn) && !attacked(p, home + 2, -p.turn) {
+      list = push(list, pos::move(home, home + 2, 0, 2))~
+    }
+    IF p.castle[right + 1] && (p.cells[home - 4] == p.turn * 4) &&
+       (p.cells[home - 1] == 0) && (p.cells[home - 2] == 0) && (p.cells[home - 3] == 0) &&
+       !attacked(p, home - 1, -p.turn) && !attacked(p, home - 2, -p.turn) {
+      list = push(list, pos::move(home, home - 2, 0, 2))~
+    }
+  }
+  RET list~
+}
+
+PUB FN legal(p: pos::Position): [pos::Move] {
+  LT pseudo = candidates(p)~
+  LT result: [pos::Move] = []~
+  LT i = 0~
+  WH i < len(pseudo) {
+    LT m = pseudo[i]~
+    LT next = pos::play(p, m)~
+    IF !attacked(next, pos::king(next, p.turn), -p.turn) { result = push(result, m)~ }
+    i = i + 1~
+  }
+  RET result~
+}
+
+PUB FN perft(p: pos::Position, depth: int): int {
+  IF depth == 0 { RET 1~ }
+  LT list = legal(p)~
+  IF depth == 1 { RET len(list)~ }
+  LT nodes = 0~
+  LT i = 0~
+  WH i < len(list) {
+    nodes = nodes + perft(pos::play(p, list[i]), depth - 1)~
+    i = i + 1~
+  }
+  RET nodes~
+}
+
+// Only provable common dead-material positions are recognized.
+PUB FN dead_material(p: pos::Position): bool {
+  LT minors = 0~
+  LT knights = 0~
+  LT bishop_color = -1~
+  LT same_color = true~
+  LT s = 21~
+  WH s <= 98 {
+    LT kind = abs(p.cells[s])~
+    IF (kind == 1) || (kind == 4) || (kind == 5) { RET false~ }
+    IF kind == 2 { knights = knights + 1~ minors = minors + 1~ }
+    IF kind == 3 {
+      minors = minors + 1~
+      LT color = (s / 10 + s % 10) % 2~
+      IF bishop_color == -1 { bishop_color = color~ }
+      IF color != bishop_color { same_color = false~ }
+    }
+    s = s + 1~
+  }
+  RET (minors <= 1) || ((knights == 0) && same_color)~
+}
+
+// Exact repetition key; a non-capturable en-passant target is irrelevant.
+PUB FN key(p: pos::Position, list: [pos::Move]): str {
+  LT value = str(p.turn) + ":"~
+  LT s = 21~
+  WH s <= 98 {
+    IF p.cells[s] != 99 { value = value + str(p.cells[s]) + ","~ }
+    s = s + 1~
+  }
+  LT i = 0~
+  WH i < 4 { value = value + str(p.castle[i]) + ","~ i = i + 1~ }
+  LT ep = 0~
+  i = 0~
+  WH i < len(list) { IF list[i].flag == 1 { ep = p.ep~ } i = i + 1~ }
+  RET value + str(ep)~
+}

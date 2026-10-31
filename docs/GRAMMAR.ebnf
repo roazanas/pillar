@@ -1,0 +1,62 @@
+(* Pillar 2.0 alpha: grammar of the logical stream after column traversal.
+   Whitespace/comments separate tokens; they do not terminate statements.
+   Geometric and semantic restrictions are specified in LANGUAGE.md. *)
+
+module       = { import | function | structure } ;
+import       = "IM", string, "AS", identifier, "~" ;
+function     = [ "PUB" ], "FN", identifier, "(", [ parameters ], ")",
+               [ ":", type ], block ;
+parameters   = parameter, { ",", parameter }, [ "," ] ;
+parameter    = identifier, ":", type ;
+structure    = [ "PUB" ], "ST", identifier, "{", [ parameters ], "}" ;
+type         = "int" | "float" | "bool" | "str" | "unit"
+             | "[", type, "]" | qualified ;
+qualified    = identifier, [ "::", identifier ] ;
+block        = "{", { statement }, "}" ;
+statement    = let | return | conditional | loop | loop_exit
+             | input | output | assignment | expression, "~" ;
+let          = "LT", identifier, [ ":", type ], "=", expression, "~" ;
+return       = "RET", [ expression ], "~" ;
+conditional  = "IF", expression, block, [ "EL", block ] ;
+loop         = "WH", expression, block ;
+loop_exit    = ( "break" | "BRK" | "continue" | "CONT" ), "~" ;
+input        = ( "INPI" | "INPF" | "INPS" ), identifier, "~" ;
+output       = ( "OUTI" | "OUTF" | "OUTS" ), expression, "~" ;
+assignment   = place, "=", expression, "~" ;
+place        = identifier, { "[", expression, "]" | ".", identifier } ;
+expression   = logical_or ;
+logical_or   = logical_and, { "||", logical_and } ;
+logical_and  = comparison, { "&&", comparison } ;
+comparison   = sum, [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ), sum ] ;
+sum          = product, { ( "+" | "-" ), product } ;
+product      = unary, { ( "*" | "/" | "%" ), unary } ;
+unary        = ( "-" | "!" ), unary | postfix ;
+postfix      = primary, { "[", expression, "]" | ".", identifier } ;
+primary      = integer | float | string | "true" | "false" | identifier
+             | "(", expression, ")"
+             | "[", [ arguments ], "]"
+             | ( qualified | "int" | "float" | "str" ), "(", [ arguments ], ")"
+             | qualified, "{", [ initializers ], "}" ;
+arguments    = expression, { ",", expression }, [ "," ] ;
+initializers = identifier, ":", expression,
+               { ",", identifier, ":", expression }, [ "," ] ;
+identifier   = ( ascii_letter | "_" ), { ascii_letter | digit | "_" } ;
+integer      = digit, { digit } ;
+float        = digit, { digit },
+               ( ".", digit, { digit }, [ exponent ] | exponent ) ;
+exponent     = ( "e" | "E" ), [ "+" | "-" ], digit, { digit } ;
+string       = '"', { string_scalar | escape }, '"' ;
+escape       = "\\", ( '"' | "\\" | "n" | "r" | "t" | "0"
+             | "u", "{", hex_digit, { hex_digit }, "}" ) ;
+
+(* A string_scalar is a Unicode scalar other than quote, backslash, CR/LF or tab.
+   Unicode escapes have 1–6 hex digits and must denote a valid scalar.
+   Minus is a unary operator; the minimum signed integer has a special literal rule.
+   A comparison may not directly contain another ungrouped comparison; parentheses
+   explicitly permit nesting. Relational operators bind tighter than equality in the
+   parser, but unparenthesized comparison chains are rejected.
+   // comments end at a logical newline; /* comments */ are non-nesting. *)
+ascii_letter = "A" .. "Z" | "a" .. "z" ;
+digit        = "0" .. "9" ;
+hex_digit    = digit | "a" .. "f" | "A" .. "F" ;
+string_scalar = ? Unicode scalar excluding quote, backslash, CR, LF and tab ? ;

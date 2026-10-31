@@ -1,0 +1,4 @@
+PUB FN twice(x: int): int
+{
+  RET x * 2~
+}

@@ -1,0 +1,94 @@
+IM "position.plr" AS pos~
+IM "moves.plr" AS rules~
+IM "search.plr" AS engine~
+IM "fixtures.plr" AS fixtures~
+IM "selftest.plr" AS tests~
+IM "ui.plr" AS ui~
+
+FN usage() {
+  println("Pillar Chess")~
+  println("chess [play [1..4] [white|black|both]]")~
+  println("chess analyze [1..4] [POSITION]")~
+  println("chess perft|divide [0..5] [POSITION]")~
+  println("chess selftest [full]")~
+  println("chess selfplay [1..4] [1..200]")~
+  println("chess replay e2e4 e7e5 g1f3 ...")~
+  println("POSITION: start, kiwipete, endgame, promotion, tactics, middlegame")~
+}
+
+// Comparing bounded spellings also handles malformed input without int() errors.
+FN number(text: str, low: int, high: int): int {
+  LT value = low~
+  WH value <= high { IF text == str(value) { RET value~ } value = value + 1~ }
+  RET -1~
+}
+
+FN fixture(text: str): int {
+  LT names: [str] = ["start", "kiwipete", "endgame", "promotion", "tactics", "middlegame"]~
+  LT i = 0~
+  WH i < len(names) { IF text == names[i] { RET i~ } i = i + 1~ }
+  RET -1~
+}
+
+FN main(): int {
+  LT argv = args()~
+  IF len(argv) == 0 { ui::play(2, 1)~ RET 0~ }
+  LT mode = argv[0]~
+  IF (mode == "help") || (mode == "--help") { usage()~ RET 0~ }
+  IF mode == "selftest" {
+    IF (len(argv) > 2) || ((len(argv) == 2) && (argv[1] != "full")) { usage()~ RET 2~ }
+    tests::run(len(argv) == 2)~ RET 0~
+  }
+  IF (mode == "perft") || (mode == "divide") || (mode == "analyze") {
+    IF len(argv) > 3 { usage()~ RET 2~ }
+    LT depth = 3~ LT preset = 0~ LT maximum = 5~ LT minimum = 0~
+    IF mode == "analyze" { maximum = 4~ minimum = 1~ }
+    IF len(argv) > 1 { depth = number(argv[1], minimum, maximum)~ }
+    IF len(argv) > 2 { preset = fixture(argv[2])~ }
+    IF (depth < 0) || (preset < 0) { usage()~ RET 2~ }
+    LT p = fixtures::get(preset)~
+    IF mode == "perft" { OUTI rules::perft(p, depth)~ RET 0~ }
+    IF mode == "divide" {
+      IF depth == 0 { println("total 1")~ RET 0~ }
+      LT list = rules::legal(p)~ LT i = 0~ LT total = 0~
+      WH i < len(list) {
+        LT count = rules::perft(pos::play(p, list[i]), depth - 1)~
+        println(pos::notation(list[i]) + " " + str(count))~
+        total = total + count~ i = i + 1~
+      }
+      println("total " + str(total))~ RET 0~
+    }
+    ui::board(p)~
+    LT found = engine::think(p, depth, 20000, true)~
+    println("best " + engine::line(found.pv) + " nodes " + str(found.nodes))~ RET 0~
+  }
+  IF mode == "selfplay" {
+    IF len(argv) > 3 { usage()~ RET 2~ }
+    LT depth = 2~ LT plies = 12~
+    IF len(argv) > 1 { depth = number(argv[1], 1, 4)~ }
+    IF len(argv) > 2 { plies = number(argv[2], 1, 200)~ }
+    IF (depth < 0) || (plies < 0) { usage()~ RET 2~ }
+    ui::selfplay(depth, plies)~ RET 0~
+  }
+  IF mode == "play" {
+    IF len(argv) > 3 { usage()~ RET 2~ }
+    LT depth = 2~ LT side = 1~
+    IF len(argv) > 1 { depth = number(argv[1], 1, 4)~ }
+    IF len(argv) > 2 {
+      IF argv[2] == "black" { side = -1~ }
+      EL { IF argv[2] == "both" { side = 0~ } EL { IF argv[2] != "white" { side = 2~ } } }
+    }
+    IF (depth < 0) || (side == 2) { usage()~ RET 2~ }
+    ui::play(depth, side)~ RET 0~
+  }
+  IF mode == "replay" {
+    LT p = pos::initial()~ LT i = 1~
+    WH i < len(argv) {
+      LT list = rules::legal(p)~ LT index = ui::match_move(list, argv[i])~
+      IF index < 0 { println("Illegal move: " + argv[i])~ RET 2~ }
+      p = pos::play(p, list[index])~ i = i + 1~
+    }
+    ui::board(p)~ println("REPLAY OK")~ RET 0~
+  }
+  usage()~ RET 2~
+}

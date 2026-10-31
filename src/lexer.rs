@@ -1,53 +1,79 @@
-use log::debug;
+use crate::{
+    diagnostics::{Diagnostic, Result},
+    source::{SourceFile, Span},
+};
 use logos::Logos;
-
-#[derive(Logos, Debug, PartialEq, Clone)]
-#[logos(skip r"[ \t\n\f\r]+")]
-pub enum Token<'input> {
-    #[token("LT")]
-    KeywordLet,
+use serde::Serialize;
+#[derive(Logos, Clone, Debug, PartialEq, Serialize)]
+pub enum Kind {
+    #[regex(r"[ \n\r\f]+")]
+    Space,
+    #[regex(r"//[^\n]*", allow_greedy = true)]
+    LineComment,
+    #[regex(r"/\*([^*]|\*+[^*/])*\*+/")]
+    BlockComment,
     #[token("FN")]
-    KeywordFn,
+    Fn,
+    #[token("LT")]
+    Let,
     #[token("RET")]
-    KeywordReturn,
+    Ret,
     #[token("IF")]
-    KeywordIf,
+    If,
     #[token("EL")]
-    KeywordElse,
+    Else,
     #[token("WH")]
-    KeywordWhile,
+    While,
+    #[token("break")]
+    Break,
+    #[token("continue")]
+    Continue,
+    #[token("BRK")]
+    Brk,
+    #[token("CONT")]
+    Cont,
+    #[token("IM")]
+    Import,
+    #[token("AS")]
+    As,
+    #[token("PUB")]
+    Pub,
+    #[token("ST")]
+    Struct,
     #[token("INPI")]
-    KeywordInputInt,
+    InputInt,
     #[token("INPF")]
-    KeywordInputFloat,
+    InputFloat,
+    #[token("INPS")]
+    InputString,
     #[token("OUTI")]
-    KeywordOutputInt,
+    OutputInt,
     #[token("OUTF")]
-    KeywordOutputFloat,
-
+    OutputFloat,
+    #[token("OUTS")]
+    OutputString,
     #[token("true")]
-    BooleanTrue,
+    True,
     #[token("false")]
-    BooleanFalse,
-    #[regex(r"\d+", |lex| lex.slice().parse().ok())]
-    IntLiteral(i64),
-    #[regex(r"\d+\.\d+", |lex| lex.slice().parse().ok())]
-    FloatLiteral(f64),
-    #[regex(r#""[^"]*""#, |lex| lex.slice())]
-    StringLiteral(&'input str),
-
+    False,
     #[token("int")]
-    TypeInt,
+    IntType,
     #[token("float")]
-    TypeFloat,
+    FloatType,
     #[token("bool")]
-    TypeBool,
+    BoolType,
     #[token("str")]
-    TypeString,
-
-    #[regex(r"[a-zA-Z_][a-zA-Z_\d]*", |lex| lex.slice())]
-    Identifier(&'input str),
-
+    StrType,
+    #[token("unit")]
+    UnitType,
+    #[regex(r"[0-9]+", callback = token_text)]
+    Int(String),
+    #[regex(r"[0-9]+(\.[0-9]+([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)", callback = token_text)]
+    Float(String),
+    #[regex(r#""([^"\\\n\r]|\\[^\n\r])*""#, callback = token_text)]
+    Str(String),
+    #[regex(r"[a-zA-Z_][a-zA-Z_0-9]*", callback = token_text)]
+    Ident(String),
     #[token("=")]
     Assign,
     #[token("+")]
@@ -61,60 +87,90 @@ pub enum Token<'input> {
     #[token("%")]
     Percent,
     #[token("==")]
-    Equal,
+    Eq,
     #[token("!=")]
-    NotEqual,
+    Ne,
     #[token("<")]
-    Less,
+    Lt,
     #[token("<=")]
-    LessEqual,
+    Le,
     #[token(">")]
-    Greater,
+    Gt,
     #[token(">=")]
-    GreaterEqual,
+    Ge,
     #[token("!")]
-    LogicalNot,
-
+    Not,
+    #[token("&&")]
+    And,
+    #[token("||")]
+    Or,
     #[token("(")]
-    LeftParen,
+    LParen,
     #[token(")")]
-    RightParen,
+    RParen,
     #[token("{")]
-    LeftBrace,
+    LBrace,
     #[token("}")]
-    RightBrace,
+    RBrace,
+    #[token("[")]
+    LBracket,
+    #[token("]")]
+    RBracket,
     #[token(",")]
     Comma,
     #[token(":")]
     Colon,
+    #[token("::")]
+    Scope,
+    #[token(".")]
+    Dot,
     #[token("~")]
-    Tilda,
+    End,
 }
-
-pub fn tokenize(input: &str) -> Result<Vec<Token<'_>>, LexError> {
-    let mut lex = Token::lexer(input);
-    let mut tokens: Vec<Token> = Vec::new();
-
-    while let Some(result) = lex.next() {
-        match result {
-            Ok(tok) => {
-                debug!("{:<15} => {:?}", lex.slice(), tok);
-                tokens.push(tok)
-            }
-            Err(_) => {
-                return Err(LexError {
-                    span: lex.span(),
-                    invalid_text: lex.slice().to_string(),
-                });
-            }
-        }
+impl Kind {
+    pub fn trivia(&self) -> bool {
+        matches!(self, Self::Space | Self::LineComment | Self::BlockComment)
     }
-
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Token {
+    pub kind: Kind,
+    pub span: Span,
+    pub text: String,
+}
+pub fn tokenize(source: &SourceFile) -> Result<Vec<Token>> {
+    if let Some(message) = &source.layout_error {
+        return Err(Diagnostic::error("E0003", message, source.span(0..0)));
+    }
+    if let Some(span) = source.tab_span() {
+        return Err(Diagnostic::error(
+            "E0001",
+            "tabs are not allowed; use spaces or the \\t escape",
+            span,
+        ));
+    }
+    let mut tokens = Vec::new();
+    for (kind, range) in Kind::lexer(&source.logical).spanned() {
+        let span = source.span(range.clone());
+        let kind = kind.map_err(|_| {
+            Diagnostic::error(
+                "E0002",
+                format!(
+                    "unexpected character or unterminated literal: {:?}",
+                    &source.logical[range.clone()]
+                ),
+                span,
+            )
+        })?;
+        tokens.push(Token {
+            kind,
+            span,
+            text: source.logical[range].into(),
+        });
+    }
     Ok(tokens)
 }
 
-#[derive(Debug)]
-pub struct LexError {
-    pub span: std::ops::Range<usize>,
-    pub invalid_text: String,
+fn token_text(lex: &mut logos::Lexer<'_, Kind>) -> String {
+    lex.slice().to_owned()
 }

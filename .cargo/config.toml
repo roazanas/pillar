@@ -1,3 +1,1 @@
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+# Native platform linkers are selected by Cargo. Extra linkers such as mold are optional.

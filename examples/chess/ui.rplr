@@ -1,0 +1,176 @@
+IM "position.plr" AS pos~
+IM "moves.plr" AS rules~
+IM "search.plr" AS engine~
+
+FN symbol(piece: int): str {
+  LT white: [str] = [".", "P", "N", "B", "R", "Q", "K"]~
+  LT black: [str] = [".", "p", "n", "b", "r", "q", "k"]~
+  IF piece >= 0 { RET white[piece]~ }
+  RET black[-piece]~
+}
+
+PUB FN board(p: pos::Position) {
+  println("")~
+  LT rank = 8~
+  WH rank >= 1 {
+    LT row = str(rank) + "  "~
+    LT file = 1~
+    WH file <= 8 {
+      row = row + symbol(p.cells[pos::square(file, rank)]) + " "~
+      file = file + 1~
+    }
+    println(row)~
+    rank = rank - 1~
+  }
+  println("   a b c d e f g h")~
+  LT side = "White"~ IF p.turn == -1 { side = "Black"~ }
+  println(side + " to move; move " + str(p.fullmove) + "; halfmove clock " + str(p.halfmove))~
+  IF rules::in_check(p) { println("CHECK")~ }
+}
+
+PUB FN match_move(list: [pos::Move], text: str): int {
+  LT i = 0~
+  WH i < len(list) {
+    LT m = list[i]~
+    IF pos::notation(m) == text { RET i~ }
+    IF (m.promotion == 5) && (pos::name(m.from) + pos::name(m.to) == text) { RET i~ }
+    i = i + 1~
+  }
+  RET -1~
+}
+
+PUB FN repetitions(keys: [str]): int {
+  IF len(keys) == 0 { RET 0~ }
+  LT count = 0~
+  LT i = 0~
+  WH i < len(keys) {
+    IF keys[i] == keys[len(keys) - 1] { count = count + 1~ }
+    i = i + 1~
+  }
+  RET count~
+}
+
+PUB FN finished(p: pos::Position, list: [pos::Move], keys: [str]): bool {
+  IF len(list) == 0 {
+    IF rules::in_check(p) {
+      IF p.turn == 1 { println("CHECKMATE: Black wins.")~ }
+      EL { println("CHECKMATE: White wins.")~ }
+    } EL { println("DRAW: stalemate.")~ }
+    RET true~
+  }
+  IF rules::dead_material(p) { println("DRAW: insufficient mating material.")~ RET true~ }
+  IF p.halfmove >= 150 { println("DRAW: 75-move rule.")~ RET true~ }
+  IF repetitions(keys) >= 5 { println("DRAW: fivefold repetition.")~ RET true~ }
+  RET false~
+}
+
+FN short_positions(values: [pos::Position], count: int): [pos::Position] {
+  LT result: [pos::Position] = []~
+  LT i = 0~
+  WH i < count { result = push(result, values[i])~ i = i + 1~ }
+  RET result~
+}
+
+FN short_strings(values: [str], count: int): [str] {
+  LT result: [str] = []~
+  LT i = 0~
+  WH i < count { result = push(result, values[i])~ i = i + 1~ }
+  RET result~
+}
+
+FN save(log: [str]) {
+  LT text = "Pillar Chess - coordinate move transcript\n"~
+  LT i = 0~
+  WH i < len(log) {
+    IF i % 2 == 0 { text = text + str(i / 2 + 1) + ". "~ }
+    text = text + log[i] + " "~
+    IF i % 2 == 1 { text = text + "\n"~ }
+    i = i + 1~
+  }
+  write_file("pillar-chess.txt", text + "\n")~
+  println("Saved pillar-chess.txt in the current directory.")~
+}
+
+FN help() {
+  println("Moves: e2e4, g1f3, e7e8q (n/b/r/q for promotion; default q).")~
+  println("Commands: moves, hint, undo, save, claim, help, quit.")~
+  println("White pieces are uppercase. Exit with quit before closing input.")~
+}
+
+PUB FN play(depth: int, human_side: int) {
+  println("PILLAR CHESS | native engine written entirely in Pillar")~
+  help()~
+  LT p = pos::initial()~
+  LT positions: [pos::Position] = [p]~
+  LT keys: [str] = [rules::key(p, rules::legal(p))]~
+  LT log: [str] = []~
+  WH len(log) < 512 {
+    p = positions[len(positions) - 1]~
+    LT list = rules::legal(p)~
+    board(p)~
+    IF finished(p, list, keys) { RET~ }
+    LT selected = list[0]~
+    IF (human_side != 0) && (p.turn != human_side) {
+      println("Thinking...")~
+      LT found = engine::think(p, depth, 12000, true)~
+      selected = found.pv[0]~
+      println("Engine plays " + pos::notation(selected))~
+    } EL {
+      print("> ")~
+      LT command = read_line()~
+      IF command == "quit" { println("Game closed.")~ RET~ }
+      IF command == "help" { help()~ continue~ }
+      IF command == "moves" {
+        LT i = 0~ LT text = ""~
+        WH i < len(list) { text = text + pos::notation(list[i]) + " "~ i = i + 1~ }
+        println(text)~ continue~
+      }
+      IF command == "hint" {
+        LT hint = engine::think(p, depth, 12000, true)~
+        println("Hint: " + engine::line(hint.pv))~ continue~
+      }
+      IF command == "save" { save(log)~ continue~ }
+      IF command == "claim" {
+        IF (p.halfmove >= 100) || (repetitions(keys) >= 3) {
+          println("DRAW: claim accepted.")~ RET~
+        }
+        println("No current threefold or 50-move draw claim.")~ continue~
+      }
+      IF command == "undo" {
+        LT count = len(log)~
+        IF count == 0 { println("No moves to undo.")~ continue~ }
+        LT remove = 1~ IF (human_side != 0) && (count >= 2) { remove = 2~ }
+        positions = short_positions(positions, len(positions) - remove)~
+        keys = short_strings(keys, len(keys) - remove)~
+        log = short_strings(log, count - remove)~
+        println("Undid " + str(remove) + " ply.")~ continue~
+      }
+      LT index = match_move(list, command)~
+      IF index < 0 { println("Illegal move or unknown command. Use moves or help.")~ continue~ }
+      selected = list[index]~
+    }
+    p = pos::play(p, selected)~
+    positions = push(positions, p)~
+    keys = push(keys, rules::key(p, rules::legal(p)))~
+    log = push(log, pos::notation(selected))~
+  }
+  println("Session stopped after 512 ply.")~
+}
+
+PUB FN selfplay(depth: int, plies: int) {
+  LT p = pos::initial()~
+  LT keys: [str] = [rules::key(p, rules::legal(p))]~
+  LT i = 0~
+  WH i < plies {
+    LT list = rules::legal(p)~
+    IF finished(p, list, keys) { RET~ }
+    LT found = engine::think(p, depth, 6000, false)~
+    LT m = found.pv[0]~
+    println("ply " + str(i + 1) + " " + pos::notation(m) + " score " + str(found.score) + " nodes " + str(found.nodes))~
+    p = pos::play(p, m)~
+    keys = push(keys, rules::key(p, rules::legal(p)))~
+    i = i + 1~
+  }
+  board(p)~
+  println("SELFPLAY OK")~
+}

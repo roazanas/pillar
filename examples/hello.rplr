@@ -1,0 +1,6 @@
+FN main(): int
+{
+  println("Hello, Pillar!")~
+  println("Unicode: \u{1F600}")~
+  RET 0~
+}

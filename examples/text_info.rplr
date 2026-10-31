@@ -1,0 +1,18 @@
+IM "std/env" AS env~
+IM "std/fs" AS fs~
+
+FN main(): int
+{
+  LT paths: [str] = env::args()~
+  IF len(paths) != 1
+  {
+    println("Usage: text_info PATH")~
+    RET 2~
+  }
+  LT text: str = fs::read_file(paths[0])~
+  print("Unicode scalars: ")~
+  println(len(text))~
+  print("Bytes: ")~
+  println(byte_len(text))~
+  RET 0~
+}

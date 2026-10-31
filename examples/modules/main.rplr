@@ -1,0 +1,7 @@
+IM "math.plr" AS math~
+
+FN main(): int
+{
+  OUTI math::twice(21)~
+  RET 0~
+}

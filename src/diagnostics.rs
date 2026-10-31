@@ -1,45 +1,82 @@
-use ariadne::{Color, Label, Report, ReportKind, Source};
-use chumsky::error::Rich;
-use owo_colors::OwoColorize;
-
-use crate::lexer::LexError;
-use crate::lexer::Token;
-
-pub fn emit_lexer_error(err: &LexError, file_path: &str, code: &str) {
-    Report::build(ReportKind::Error, (file_path, err.span.clone()))
-        .with_message("Lexer error")
-        .with_label(
-            Label::new((file_path, err.span.clone()))
-                .with_message(format!("Unexpected character: {}", err.invalid_text))
-                .with_color(Color::Red),
-        )
-        .finish()
-        .eprint((file_path, Source::from(code)))
-        .unwrap();
+use crate::source::{SourceFile, Span};
+use serde::Serialize;
+use unicode_width::UnicodeWidthChar;
+#[derive(Clone, Debug, Serialize)]
+pub struct Diagnostic {
+    pub code: String,
+    pub severity: String,
+    pub message: String,
+    pub span: Span,
 }
-
-pub fn emit_parser_error(err: &Rich<Token>, tokens: &[Token]) {
-    let span = err.span();
-    eprintln!(
-        "{}\n    {} {:?} {} {:?} ({:?} {} {:?})\n    {}: {}",
-        "Syntax error".red().bold(),
-        "found: ".red().bold(),
-        err.found()
-            .map(|t| format!("{:?}", t))
-            .unwrap_or_else(|| "end of input".to_string()),
-        "at".bright_black(),
-        span,
-        tokens
-            .get(span.start.saturating_sub(1))
-            .unwrap_or(&Token::Tilda),
-        "->".bright_black(),
-        tokens
-            .get(span.end.saturating_sub(1))
-            .unwrap_or(&Token::Tilda),
-        "expected".red().bold(),
-        err.expected()
-            .map(|e| format!("{e:?}"))
-            .collect::<Vec<_>>()
-            .join(&(" or ".bright_black().to_string())),
-    );
+impl Diagnostic {
+    pub fn error(code: &str, message: impl Into<String>, span: Span) -> Self {
+        Self {
+            code: code.into(),
+            severity: "error".into(),
+            message: message.into(),
+            span,
+        }
+    }
+    pub fn json(&self, sources: &[SourceFile]) -> serde_json::Value {
+        if let Some(s) = sources.get(self.span.file) {
+            let ranges = s.segments(self.span);
+            let truncated = ranges.len() > 256;
+            let labels: Vec<_> = ranges
+                .into_iter()
+                .take(256)
+                .map(|r| serde_json::json!({"start":s.position(r.start),"end":s.position(r.end)}))
+                .collect();
+            serde_json::json!({"schema_version":1,"code":self.code,"severity":self.severity,"message":self.message,"file":s.path.to_string_lossy(),"labels":labels,"labels_truncated":truncated})
+        } else {
+            serde_json::json!({"schema_version":1,"code":self.code,"severity":self.severity,"message":self.message})
+        }
+    }
+    pub fn human(&self, sources: &[SourceFile], color: bool) -> String {
+        let heading = if color {
+            format!("\x1b[31merror[{}]\x1b[0m", self.code)
+        } else {
+            format!("error[{}]", self.code)
+        };
+        if let Some(s) = sources.get(self.span.file) {
+            let p = s.location(self.span);
+            let chars = s
+                .text
+                .lines()
+                .nth(p.line - 1)
+                .unwrap_or("")
+                .chars()
+                .map(|c| if c.is_control() { '�' } else { c })
+                .collect::<Vec<_>>();
+            let cursor = (p.column - 1).min(chars.len());
+            let start = cursor.saturating_sub(80);
+            let end = (start + 180).min(chars.len());
+            let prefix = if start > 0 { "… " } else { "" };
+            let suffix = if end < chars.len() { " …" } else { "" };
+            let line = format!(
+                "{prefix}{}{suffix}",
+                chars[start..end].iter().collect::<String>()
+            );
+            let caret = prefix
+                .chars()
+                .map(|c| c.width().unwrap_or(0))
+                .sum::<usize>()
+                + chars[start..cursor]
+                    .iter()
+                    .map(|c| c.width().unwrap_or(0))
+                    .sum::<usize>();
+            format!(
+                "{heading}: {}\n --> {}:{}:{}\n  |\n{:>3} | {}\n  | {}^\n",
+                self.message,
+                s.path.display(),
+                p.line,
+                p.column,
+                p.line,
+                line,
+                " ".repeat(caret)
+            )
+        } else {
+            format!("{heading}: {}\n", self.message)
+        }
+    }
 }
+pub type Result<T> = std::result::Result<T, Diagnostic>;

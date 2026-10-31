@@ -1,98 +1,115 @@
-use std::{fs::File, io::Write, path::PathBuf, process::Command};
-
-use cranelift_object::{ObjectBuilder, ObjectModule};
-
-use crate::compiler_settings::CompilerSettings;
-
-pub struct AOTBackend {
-    module: ObjectModule,
-    output_path: String,
+use crate::{
+    compiler,
+    diagnostics::{Diagnostic, Result},
+    sema::CheckedProgram,
+    source::Span,
+};
+use std::{ffi::OsString, io::Write, path::Path, process::Command};
+const RUNTIME: &[u8] = include_bytes!(env!("PILLAR_RUNTIME"));
+#[derive(Default)]
+pub struct BuildOptions {
+    pub release: bool,
+    pub linker: Option<OsString>,
 }
-
-impl AOTBackend {
-    pub fn new(settings: &CompilerSettings, output_path: &str) -> Result<Self, String> {
-        let builder = ObjectBuilder::new(
-            settings.isa_owned(),
-            output_path,
-            cranelift_module::default_libcall_names(),
-        )
-        .map_err(|e| format!("Unable to create ObjectBuilder: {e}"))?;
-
-        let module = ObjectModule::new(builder);
-
-        Ok(Self {
-            module,
-            output_path: output_path.to_string(),
-        })
+pub fn atomic_write(
+    path: &Path,
+    bytes: &[u8],
+    permissions: Option<std::fs::Permissions>,
+) -> std::io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
+    file.write_all(bytes)?;
+    if let Some(p) = permissions.or_else(|| std::fs::metadata(path).ok().map(|m| m.permissions())) {
+        file.as_file().set_permissions(p)?;
     }
-
-    pub fn module_mut(&mut self) -> &mut ObjectModule {
-        &mut self.module
-    }
-
-    pub fn finalize(self) -> Result<(), String> {
-        let product = self.module.finish();
-
-        let mut obj_path = PathBuf::from(&self.output_path);
-        obj_path.set_extension("o");
-
-        let mut file =
-            File::create(&obj_path).map_err(|e| format!("Unable to create file: {e}"))?;
-
-        file.write_all(
-            &product
-                .emit()
-                .map_err(|e| format!("Unable to generate object code: {e}"))?,
-        )
-        .map_err(|e| format!("Unable to write file: {e}"))?;
-
-        drop(file);
-
-        check_gcc().unwrap();
-
-        let status = if cfg!(target_os = "windows") {
-            Command::new("gcc")
-                .arg(&obj_path)
-                .arg("runtime.o")
-                .arg("-o")
-                .arg(&self.output_path)
-                .status()
-        } else {
-            Command::new("cc")
-                .arg(&obj_path)
-                .arg("runtime.o")
-                .arg("-o")
-                .arg(&self.output_path)
-                .status()
-        }
-        .map_err(|_| "Failed to invoke linker".to_string())?;
-        if !status.success() {
-            return Err(format!("Linking failed with status: {status}"));
-        }
-
-        std::fs::remove_file(&obj_path).ok();
-
-        Ok(())
-    }
-}
-
-fn check_gcc() -> Result<(), String> {
-    if Command::new("gcc").arg("--version").output().is_err() {
-        eprintln!("GCC not found!\n");
-        #[cfg(target_os = "windows")]
-        eprintln!(
-            "Install GCC using one of these methods:\n\n\
-             Option 1 (Recommended - Scoop):\n\
-             > Set-ExecutionPolicy RemoteSigned -Scope CurrentUser\n\
-             > irm get.scoop.sh | iex\n\
-             > scoop install mingw\n\n\
-             Option 2 (Chocolatey):\n\
-             > choco install mingw\n\n\
-             Option 3 (winget):\n\
-             > winget install MSYS2.MSYS2\n\
-             Then run in MSYS2: pacman -S mingw-w64-ucrt-x86_64-gcc"
-        );
-        return Err("Missing dependency".into());
-    }
+    file.as_file().sync_all()?;
+    file.persist(path).map_err(|e| e.error)?;
     Ok(())
+}
+pub fn build(program: &CheckedProgram, path: &Path, options: &BuildOptions) -> Result<()> {
+    let object = compiler::emit(program, options.release)?;
+    link(&object.bytes, path, options)
+}
+pub fn link(object: &[u8], path: &Path, options: &BuildOptions) -> Result<()> {
+    let fail = |message: String| Diagnostic::error("E0500", message, Span::default());
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let dir = tempfile::Builder::new()
+        .prefix(".pillar-build-")
+        .tempdir_in(parent)
+        .map_err(|e| fail(format!("cannot create temporary directory: {e}")))?;
+    let object_path = dir.path().join("program.o");
+    let archive = dir.path().join(if cfg!(target_env = "msvc") {
+        "pillar_runtime.lib"
+    } else {
+        "libpillar_runtime.a"
+    });
+    let output = dir.path().join(if cfg!(windows) {
+        "program.exe"
+    } else {
+        "program"
+    });
+    std::fs::write(&object_path, object).map_err(|e| fail(e.to_string()))?;
+    std::fs::write(&archive, RUNTIME).map_err(|e| fail(e.to_string()))?;
+    let override_linker = options
+        .linker
+        .clone()
+        .or_else(|| std::env::var_os("PILLAR_LINKER"))
+        .or_else(|| std::env::var_os("CC"));
+    let mut cmd = if let Some(linker) = override_linker {
+        Command::new(linker)
+    } else {
+        default_linker()?
+    };
+    if cfg!(target_env = "msvc") {
+        cmd.arg("/nologo")
+            .arg(&object_path)
+            .arg(&archive)
+            .arg(format!("/Fe:{}", output.display()))
+            .arg("/link")
+            .arg("/SUBSYSTEM:CONSOLE")
+            .arg("shell32.lib");
+    } else {
+        cmd.arg(&object_path)
+            .arg(&archive)
+            .arg("-lm")
+            .arg("-o")
+            .arg(&output);
+    }
+    let result = cmd.output().map_err(|e| {
+        fail(format!(
+            "cannot invoke linker {:?}: {e}; install the native C toolchain or use --linker",
+            cmd.get_program()
+        ))
+    })?;
+    if !result.status.success() {
+        return Err(fail(format!(
+            "linker failed ({}):\n{}{}",
+            result.status,
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        )));
+    }
+    let bytes = std::fs::read(&output).map_err(|e| fail(e.to_string()))?;
+    let permissions = std::fs::metadata(&output)
+        .map_err(|e| fail(e.to_string()))?
+        .permissions();
+    atomic_write(path, &bytes, Some(permissions))
+        .map_err(|e| fail(format!("cannot install executable {}: {e}", path.display())))?;
+    Ok(())
+}
+fn default_linker() -> Result<Command> {
+    #[cfg(target_env = "msvc")]
+    {
+        cc::windows_registry::find_tool(env!("PILLAR_TARGET"),"cl.exe").map(|t|t.to_command()).ok_or_else(||Diagnostic::error("E0500","MSVC C++ Build Tools and Windows SDK are required; use a Developer Command Prompt or --linker",Span::default()))
+    }
+    #[cfg(not(target_env = "msvc"))]
+    {
+        Ok(Command::new("cc"))
+    }
 }
